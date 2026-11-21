@@ -194,6 +194,25 @@ function localAiRewrite(text: string): RewriteResult {
       ],
     },
     {
+      test: /\bi\s+(want|need)\s+to\s+(eat|manger)(\s+avec\s+(mon|ma|mes)\s+\w+|\s+with\s+(my\s+)?friend[s]?)\b/i,
+      corrected: "Je veux manger avec mon ami.",
+      intent: "I want to eat with my friend",
+      notes: [
+        {
+          type: "intent",
+          original: "I want to eat with my friend",
+          suggestion: "Je veux manger avec mon ami.",
+          explanation: "Mixed English/French rendered with « vouloir » + infinitive.",
+        },
+        {
+          type: "vocabulary",
+          original: "friend",
+          suggestion: "ami",
+          explanation: "« friend » → « ami » (use « amie » if feminine).",
+        },
+      ],
+    },
+    {
       test: /\bi\s+(want|need)\s+to\s+(eat|manger)\b/i,
       corrected: "Je veux manger.",
       intent: "I want to eat",
