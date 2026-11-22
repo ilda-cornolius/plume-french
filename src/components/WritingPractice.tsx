@@ -3,7 +3,12 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { awardPracticeXp } from "@/lib/progress";
 import { notifyProgressUpdated } from "@/components/LevelBadge";
-import { HoverSaveWords } from "@/components/HoverSaveWords";
+import {
+  HoverSaveWords,
+  readGlossEnabled,
+  writeGlossEnabled,
+} from "@/components/HoverSaveWords";
+import { GlossToggle } from "@/components/GlossToggle";
 
 type Issue = {
   type: string;
@@ -72,6 +77,11 @@ export function WritingPractice() {
   const [history, setHistory] = useState<ConvSummary[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ownerLabel, setOwnerLabel] = useState("This browser");
+  const [glossOn, setGlossOn] = useState(true);
+
+  useEffect(() => {
+    setGlossOn(readGlossEnabled());
+  }, []);
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -277,9 +287,18 @@ export function WritingPractice() {
         </h1>
         <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
           Type mixed French and English however it comes out. Sessions save for{" "}
-          <span className="text-paper">{ownerLabel}</span>. Hover words in the
-          French result to send them to Anki.
+          <span className="text-paper">{ownerLabel}</span>. Toggle English under
+          French; hover words to send them to Anki.
         </p>
+        <div className="mt-3">
+          <GlossToggle
+            enabled={glossOn}
+            onChange={(on) => {
+              setGlossOn(on);
+              writeGlossEnabled(on);
+            }}
+          />
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
@@ -403,6 +422,7 @@ export function WritingPractice() {
                 <p className="brand-display mt-2 text-3xl font-bold text-citrus sm:text-4xl">
                   <HoverSaveWords
                     text={result.corrected}
+                    glossEnabled={glossOn}
                     onSaved={(_w, msg) => setAnkiMsg(msg)}
                     onError={(msg) => setAnkiMsg(msg)}
                   />

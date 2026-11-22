@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { HoverSaveWords } from "@/components/HoverSaveWords";
+import {
+  HoverSaveWords,
+  readGlossEnabled,
+  writeGlossEnabled,
+} from "@/components/HoverSaveWords";
+import { GlossToggle } from "@/components/GlossToggle";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -29,8 +34,13 @@ export function ChatPractice() {
   const [history, setHistory] = useState<ConvSummary[]>([]);
   const [ownerLabel, setOwnerLabel] = useState<string>("This browser");
   const [hydrating, setHydrating] = useState(true);
+  const [glossOn, setGlossOn] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setGlossOn(readGlossEnabled());
+  }, []);
 
   const refreshHistory = useCallback(async () => {
     try {
@@ -301,14 +311,23 @@ export function ChatPractice() {
           Talk with Plume.
         </h1>
         <p className="mt-3 text-lg text-mist sm:text-xl">
-          Practice spoken-style French in a chat. Hover any word to save it to
-          Anki (« Plume · Appris »). Chats persist across tabs for{" "}
-          <span className="text-paper">{ownerLabel}</span>.
+          Practice spoken-style French in a chat. English can sit under each
+          French word; hover to save to Anki (« Plume · Appris »). Chats persist
+          for <span className="text-paper">{ownerLabel}</span>.
         </p>
-        <p className="mt-2 text-[11px] uppercase tracking-wide text-mist/50">
-          Engine: {provider}
-          {hydrating ? " · restoring…" : ""}
-        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <GlossToggle
+            enabled={glossOn}
+            onChange={(on) => {
+              setGlossOn(on);
+              writeGlossEnabled(on);
+            }}
+          />
+          <p className="text-[11px] uppercase tracking-wide text-mist/50">
+            Engine: {provider}
+            {hydrating ? " · restoring…" : ""}
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -373,6 +392,7 @@ export function ChatPractice() {
                   {m.role === "assistant" ? (
                     <HoverSaveWords
                       text={m.content}
+                      glossEnabled={glossOn}
                       onSaved={(_w, msg) => setAnkiHint(msg)}
                       onError={(msg) => setAnkiHint(msg)}
                     />
@@ -416,8 +436,8 @@ export function ChatPractice() {
             </p>
           )}
           <p className="mt-2 text-[11px] text-mist/45">
-            Tip: hover a word in Plume&apos;s reply → Save to Anki · Appris
-            (requires AnkiWeb on the Anki page).
+            Tip: toggle EN + IPA under French words; hover always shows meaning
+            + pronunciation → Save to Anki · Appris (connect AnkiWeb first).
           </p>
         </div>
       </div>

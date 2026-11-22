@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+type WordInfo = { en: string; ipa: string };
+
 type Props = {
   text: string;
   className?: string;
-  /** Called after a successful Anki save */
+  /** FL-12: show English under each French word (IPA also when on) */
+  glossEnabled?: boolean;
   onSaved?: (word: string, message: string) => void;
   onError?: (message: string) => void;
 };
@@ -14,7 +17,6 @@ type Token =
   | { type: "word"; value: string }
   | { type: "other"; value: string };
 
-/** Split on word boundaries; keep punctuation/spaces as "other". */
 export function tokenizeForHover(text: string): Token[] {
   const tokens: Token[] = [];
   const re = /[\p{L}\p{M}\p{N}'’\-]+|[^\p{L}\p{M}\p{N}'’\-]+/gu;
@@ -33,25 +35,117 @@ export function tokenizeForHover(text: string): Token[] {
 function isSaveableWord(w: string): boolean {
   const clean = w.replace(/['’\-]/g, "");
   if (clean.length < 2) return false;
-  // Skip pure numbers
   if (/^\d+$/.test(clean)) return false;
   return true;
 }
 
+const infoCache = new Map<string, WordInfo>();
+
+async function fetchWordInfo(
+  words: string[],
+  context: string
+): Promise<Record<string, WordInfo>> {
+  const missing = words.filter((w) => !infoCache.has(w.toLowerCase()));
+  const fromCache: Record<string, WordInfo> = {};
+  for (const w of words) {
+    const c = infoCache.get(w.toLowerCase());
+    if (c) fromCache[w] = c;
+  }
+  if (!missing.length) return fromCache;
+
+  const res = await fetch("/api/gloss", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      words: [...new Set(missing)],
+      context: context.slice(0, 400),
+    }),
+  });
+  const data = await res.json();
+  const next: Record<string, WordInfo> = { ...fromCache };
+
+  const glosses = (data.glosses || {}) as Record<string, string>;
+  const pronunciations = (data.pronunciations || {}) as Record<string, string>;
+  const info = (data.info || {}) as Record<string, WordInfo>;
+
+  for (const w of missing) {
+    const fromInfo = info[w] || info[w.toLowerCase()];
+    const en =
+      (fromInfo && fromInfo.en) ||
+      glosses[w] ||
+      glosses[w.toLowerCase()] ||
+      "…";
+    const ipa =
+      (fromInfo && fromInfo.ipa) ||
+      pronunciations[w] ||
+      pronunciations[w.toLowerCase()] ||
+      "";
+    const entry = { en: String(en).trim(), ipa: String(ipa).trim() };
+    infoCache.set(w.toLowerCase(), entry);
+    next[w] = entry;
+  }
+  return next;
+}
+
 /**
- * FL-9: render message text so hovering a word offers "Save to Anki"
- * → deck « Plume · Appris » via /api/anki/add-notes.
+ * FL-9/12/13: hover save to Anki; English under FR when toggled; IPA on hover (and under FR when toggled).
  */
-export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
+export function HoverSaveWords({
+  text,
+  className,
+  glossEnabled = false,
+  onSaved,
+  onError,
+}: Props) {
   const [active, setActive] = useState<{
     word: string;
+    en: string;
+    ipa: string;
     x: number;
     y: number;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  const [infos, setInfos] = useState<Record<string, WordInfo>>({});
+  const [loading, setLoading] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const popRef = useRef<HTMLDivElement>(null);
+
+  const tokens = tokenizeForHover(text);
+  const words = tokens
+    .filter((t): t is { type: "word"; value: string } => t.type === "word")
+    .map((t) => t.value)
+    .filter(isSaveableWord);
+
+  useEffect(() => {
+    if (!glossEnabled || words.length === 0) return;
+    let cancelled = false;
+    setLoading(true);
+    fetchWordInfo(words, text)
+      .then((map) => {
+        if (!cancelled) setInfos((prev) => ({ ...prev, ...map }));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [glossEnabled, text]);
+
+  const infoOf = useCallback(
+    (word: string): WordInfo => {
+      return (
+        infos[word] ||
+        infoCache.get(word.toLowerCase()) || {
+          en: loading ? "…" : "",
+          ipa: "",
+        }
+      );
+    },
+    [infos, loading]
+  );
 
   const clearHide = () => {
     if (hideTimer.current) {
@@ -67,11 +161,42 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
 
   useEffect(() => () => clearHide(), []);
 
+  const openWord = async (word: string, el: HTMLElement) => {
+    clearHide();
+    const rect = el.getBoundingClientRect();
+    let info = infoOf(word);
+    setActive({
+      word,
+      en: info.en || "…",
+      ipa: info.ipa || "",
+      x: rect.left + rect.width / 2,
+      y: Math.max(rect.top, 48),
+    });
+
+    // Always refresh pronunciation/meaning on hover if incomplete
+    if (!info.en || info.en === "…" || !info.ipa) {
+      try {
+        const map = await fetchWordInfo([word], text);
+        info = map[word] || info;
+        setInfos((prev) => ({ ...prev, ...map }));
+        setActive((cur) =>
+          cur && cur.word === word
+            ? { ...cur, en: info.en || cur.en, ipa: info.ipa || cur.ipa }
+            : cur
+        );
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   const saveWord = useCallback(
-    async (word: string) => {
+    async (word: string, en: string, ipa: string) => {
       if (busy) return;
       setBusy(true);
       setFlash(null);
+      const meaning = en && en !== "…" ? en : infoOf(word).en;
+      const pron = ipa || infoOf(word).ipa;
       try {
         const res = await fetch("/api/anki/add-notes", {
           method: "POST",
@@ -82,8 +207,15 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
             cards: [
               {
                 front: word,
-                back: `From Plume chat:\n« ${text.slice(0, 280)} »`,
-                tags: ["plume", "chat", "hover"],
+                back: [
+                  meaning && meaning !== "…" ? meaning : "English meaning",
+                  pron ? `Pronunciation: ${pron}` : "",
+                  "",
+                  `Context: « ${text.slice(0, 200)} »`,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+                tags: ["plume", "chat", "hover", "gloss", "ipa"],
               },
             ],
           }),
@@ -97,7 +229,9 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
           setFlash(msg);
           return;
         }
-        const msg = data.message || `Saved « ${word} » to Plume · Appris`;
+        const msg =
+          data.message ||
+          `Saved « ${word} »${meaning && meaning !== "…" ? ` → ${meaning}` : ""}${pron ? ` ${pron}` : ""}`;
         onSaved?.(word, msg);
         setFlash(msg);
         setActive(null);
@@ -110,10 +244,8 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
         setTimeout(() => setFlash(null), 3500);
       }
     },
-    [busy, onError, onSaved, text]
+    [busy, infoOf, onError, onSaved, text]
   );
-
-  const tokens = tokenizeForHover(text);
 
   return (
     <span className={className}>
@@ -122,41 +254,37 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
           <button
             key={`${i}-${t.value}`}
             type="button"
-            className="rounded-sm border-b border-dotted border-transparent px-0.5 transition hover:border-citrus/70 hover:bg-citrus/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50"
-            onMouseEnter={(e) => {
-              clearHide();
-              const rect = e.currentTarget.getBoundingClientRect();
-              setActive({
-                word: t.value,
-                x: rect.left + rect.width / 2,
-                y: Math.max(rect.top, 48),
-              });
-            }}
+            className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition hover:bg-citrus/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
+              glossEnabled
+                ? "mx-0.5 py-0.5"
+                : "border-b border-dotted border-transparent hover:border-citrus/70"
+            }`}
+            onMouseEnter={(e) => void openWord(t.value, e.currentTarget)}
             onMouseLeave={scheduleHide}
             onClick={(e) => {
               e.preventDefault();
-              clearHide();
-              const rect = e.currentTarget.getBoundingClientRect();
-              setActive({
-                word: t.value,
-                x: rect.left + rect.width / 2,
-                y: Math.max(rect.top, 48),
-              });
+              void openWord(t.value, e.currentTarget);
             }}
-            onFocus={(e) => {
-              clearHide();
-              const rect = e.currentTarget.getBoundingClientRect();
-              setActive({
-                word: t.value,
-                x: rect.left + rect.width / 2,
-                y: Math.max(rect.top, 48),
-              });
-            }}
+            onFocus={(e) => void openWord(t.value, e.currentTarget)}
             onBlur={scheduleHide}
-            aria-label={`Word: ${t.value}. Save to Anki`}
+            aria-label={`${t.value}${infoOf(t.value).en ? `: ${infoOf(t.value).en}` : ""}${infoOf(t.value).ipa ? ` ${infoOf(t.value).ipa}` : ""}. Save to Anki`}
           >
-            {t.value}
+            <span className="leading-tight">{t.value}</span>
+            {glossEnabled && (
+              <>
+                <span className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] font-normal leading-tight text-mist/80">
+                  {infoOf(t.value).en || (loading ? "…" : "·")}
+                </span>
+                {infoOf(t.value).ipa ? (
+                  <span className="max-w-[7.5rem] truncate text-center font-mono text-[9px] font-normal leading-tight text-mist/55">
+                    {infoOf(t.value).ipa}
+                  </span>
+                ) : null}
+              </>
+            )}
           </button>
+        ) : glossEnabled && t.type === "other" && /^\s+$/.test(t.value) ? (
+          <span key={`${i}-o`} className="inline-block w-1.5" />
         ) : (
           <span key={`${i}-o`}>{t.value}</span>
         )
@@ -164,7 +292,6 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
 
       {active && (
         <div
-          ref={popRef}
           role="dialog"
           aria-label={`Save ${active.word} to Anki`}
           className="fixed z-50 -translate-x-1/2 -translate-y-full rounded-xl border border-[var(--line)] bg-ink px-3 py-2 shadow-glow"
@@ -172,13 +299,30 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
           onMouseEnter={clearHide}
           onMouseLeave={scheduleHide}
         >
-          <p className="mb-1.5 text-center text-sm font-semibold text-paper">
+          <p className="text-center text-sm font-semibold text-paper">
             {active.word}
           </p>
+          <p className="text-center text-xs text-mist">
+            {active.en && active.en !== "…" ? active.en : infoOf(active.word).en || "…"}
+          </p>
+          {(active.ipa || infoOf(active.word).ipa) && (
+            <p className="mb-1.5 text-center font-mono text-[11px] text-citrus/90">
+              {active.ipa || infoOf(active.word).ipa}
+            </p>
+          )}
+          {!(active.ipa || infoOf(active.word).ipa) && (
+            <p className="mb-1.5 text-center text-[10px] text-mist/50">…</p>
+          )}
           <button
             type="button"
             disabled={busy}
-            onClick={() => saveWord(active.word)}
+            onClick={() =>
+              saveWord(
+                active.word,
+                active.en || infoOf(active.word).en,
+                active.ipa || infoOf(active.word).ipa
+              )
+            }
             className="whitespace-nowrap rounded-full bg-citrus px-3 py-1.5 text-xs font-semibold text-ink hover:bg-citrus-dim disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save to Anki · Appris"}
@@ -193,4 +337,25 @@ export function HoverSaveWords({ text, className, onSaved, onError }: Props) {
       )}
     </span>
   );
+}
+
+export const GLOSS_TOGGLE_KEY = "plume_gloss_en";
+
+export function readGlossEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const v = localStorage.getItem(GLOSS_TOGGLE_KEY);
+    if (v === null) return true;
+    return v === "1" || v === "true";
+  } catch {
+    return true;
+  }
+}
+
+export function writeGlossEnabled(on: boolean) {
+  try {
+    localStorage.setItem(GLOSS_TOGGLE_KEY, on ? "1" : "0");
+  } catch {
+    // ignore
+  }
 }
