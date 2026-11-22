@@ -316,30 +316,14 @@ export function ChatPractice() {
           Talk with Plume.
         </h1>
         <p className="mt-3 text-lg text-mist sm:text-xl">
-          Practice spoken-style French in a chat. English can sit under each
-          French word; hover to save to Anki (« Plume · Appris »). Chats persist
-          for <span className="text-paper">{ownerLabel}</span>.
+          Practice spoken-style French in a chat. Turn on English and say-it
+          tips in the chat box; hover a word to save to Anki. Chats persist for{" "}
+          <span className="text-paper">{ownerLabel}</span>.
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <GlossToggle
-            enabled={glossOn}
-            onChange={(on) => {
-              setGlossOn(on);
-              writeGlossEnabled(on);
-            }}
-          />
-          <PronunciationToggle
-            enabled={pronOn}
-            onChange={(on) => {
-              setPronOn(on);
-              writePronunciationEnabled(on);
-            }}
-          />
-          <p className="text-[11px] uppercase tracking-wide text-mist/50">
-            Engine: {provider}
-            {hydrating ? " · restoring…" : ""}
-          </p>
-        </div>
+        <p className="mt-2 text-[11px] uppercase tracking-wide text-mist/50">
+          Engine: {provider}
+          {hydrating ? " · restoring…" : ""}
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
@@ -385,6 +369,27 @@ export function ChatPractice() {
         </aside>
 
         <div className="panel-interactive flex min-h-[420px] flex-col rounded-2xl p-4 sm:p-5">
+          <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-[var(--line)] pb-3">
+            <GlossToggle
+              enabled={glossOn}
+              onChange={(on) => {
+                setGlossOn(on);
+                writeGlossEnabled(on);
+              }}
+            />
+            <PronunciationToggle
+              enabled={pronOn}
+              onChange={(on) => {
+                setPronOn(on);
+                writePronunciationEnabled(on);
+              }}
+            />
+            <p className="text-[11px] text-mist/45">
+              {pronOn
+                ? "Say-it under words (dire → deer) + hover"
+                : "Pronunciation tips hidden"}
+            </p>
+          </div>
           <div
             className="flex-1 space-y-3 overflow-y-auto pr-1"
             style={{ maxHeight: "52vh" }}
@@ -449,8 +454,8 @@ export function ChatPractice() {
             </p>
           )}
           <p className="mt-2 text-[11px] text-mist/45">
-            Tip: use the EN and Pronunciation toggles; hover a word → Save to
-            Anki · Appris (connect AnkiWeb first).
+            Tip: toggles above stay on/off like your saved chats. Hover a word →
+            Save to Anki · Appris (includes say-it when Pronunciation is on).
           </p>
         </div>
       </div>

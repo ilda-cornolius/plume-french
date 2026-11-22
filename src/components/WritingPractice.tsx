@@ -292,25 +292,9 @@ export function WritingPractice() {
         </h1>
         <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
           Type mixed French and English however it comes out. Sessions save for{" "}
-          <span className="text-paper">{ownerLabel}</span>. Toggle English and
-          pronunciation under French; hover words to send them to Anki.
+          <span className="text-paper">{ownerLabel}</span>. Use the EN /
+          Pronunciation toggles on the result; hover words to send them to Anki.
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <GlossToggle
-            enabled={glossOn}
-            onChange={(on) => {
-              setGlossOn(on);
-              writeGlossEnabled(on);
-            }}
-          />
-          <PronunciationToggle
-            enabled={pronOn}
-            onChange={(on) => {
-              setPronOn(on);
-              writePronunciationEnabled(on);
-            }}
-          />
-        </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
@@ -428,9 +412,25 @@ export function WritingPractice() {
               )}
 
               <div className="panel-interactive rounded-2xl p-5 sm:p-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mist">
-                  French
-                </p>
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mist">
+                    French
+                  </p>
+                  <GlossToggle
+                    enabled={glossOn}
+                    onChange={(on) => {
+                      setGlossOn(on);
+                      writeGlossEnabled(on);
+                    }}
+                  />
+                  <PronunciationToggle
+                    enabled={pronOn}
+                    onChange={(on) => {
+                      setPronOn(on);
+                      writePronunciationEnabled(on);
+                    }}
+                  />
+                </div>
                 <p className="brand-display mt-2 text-3xl font-bold text-citrus sm:text-4xl">
                   <HoverSaveWords
                     text={result.corrected}
