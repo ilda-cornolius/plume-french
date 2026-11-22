@@ -148,7 +148,7 @@ export function AnkiSyncPanel() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  className="w-full rounded-xl border border-[var(--line)] bg-ink/60 px-3 py-2.5 text-paper outline-none focus:border-citrus/50"
+                  className="w-full rounded-xl border border-[var(--line)] bg-[#f4fafb] px-3 py-2.5 text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
                 />
               </div>
               <div>
@@ -166,7 +166,7 @@ export function AnkiSyncPanel() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="w-full rounded-xl border border-[var(--line)] bg-ink/60 px-3 py-2.5 text-paper outline-none focus:border-citrus/50"
+                  className="w-full rounded-xl border border-[var(--line)] bg-[#f4fafb] px-3 py-2.5 text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
                 />
               </div>
               <button

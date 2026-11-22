@@ -127,7 +127,7 @@ export function ChatPractice() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Écris en français (ou Franglais)…"
-            className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-ink/60 px-4 py-2.5 text-paper outline-none focus:border-citrus/50"
+            className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[#f4fafb] px-4 py-2.5 text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
           />
           <button
             type="submit"

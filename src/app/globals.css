@@ -33,6 +33,19 @@ body {
   color: var(--ink);
 }
 
+/* Typed text must stay high-contrast (black on light field) */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="submit"]):not([type="button"]),
+textarea {
+  color: #000 !important;
+  background-color: #f4fafb;
+  caret-color: #000;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(0, 0, 0, 0.4);
+}
+
 .atmosphere {
   background:
     radial-gradient(1200px 700px at 12% -10%, rgba(200, 240, 67, 0.14), transparent 55%),

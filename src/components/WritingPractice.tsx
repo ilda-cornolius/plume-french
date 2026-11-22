@@ -184,7 +184,7 @@ export function WritingPractice() {
           }}
           placeholder="Écrivez librement… je want to le store"
           rows={5}
-          className="w-full resize-y rounded-xl border border-[var(--line)] bg-ink/60 px-4 py-3 text-lg leading-relaxed text-paper outline-none transition placeholder:text-mist/40 focus:border-citrus/50 focus:ring-2 focus:ring-citrus/20"
+          className="w-full resize-y rounded-xl border border-[var(--line)] bg-[#f4fafb] px-4 py-3 text-lg leading-relaxed text-black outline-none transition placeholder:text-black/40 focus:border-citrus/50 focus:ring-2 focus:ring-citrus/20"
         />
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
