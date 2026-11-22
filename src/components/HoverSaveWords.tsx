@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { normalizeSay } from "@/lib/fr-gloss";
 
 type WordInfo = { en: string; ipa: string };
 
@@ -41,16 +42,33 @@ function isSaveableWord(w: string): boolean {
   return true;
 }
 
+/** Bump when pronunciation format changes so stale IPA cache is dropped. */
+const CACHE_VERSION = "say-v2";
 const infoCache = new Map<string, WordInfo>();
+
+function cacheKey(word: string): string {
+  return `${CACHE_VERSION}:${word.toLowerCase()}`;
+}
+
+function readCache(word: string): WordInfo | undefined {
+  const hit = infoCache.get(cacheKey(word));
+  if (!hit) return undefined;
+  const say = normalizeSay(hit.ipa);
+  if (hit.ipa && !say) {
+    infoCache.delete(cacheKey(word));
+    return undefined;
+  }
+  return say === hit.ipa ? hit : { ...hit, ipa: say };
+}
 
 async function fetchWordInfo(
   words: string[],
   context: string
 ): Promise<Record<string, WordInfo>> {
-  const missing = words.filter((w) => !infoCache.has(w.toLowerCase()));
+  const missing = words.filter((w) => !readCache(w));
   const fromCache: Record<string, WordInfo> = {};
   for (const w of words) {
-    const c = infoCache.get(w.toLowerCase());
+    const c = readCache(w);
     if (c) fromCache[w] = c;
   }
   if (!missing.length) return fromCache;
@@ -77,13 +95,16 @@ async function fetchWordInfo(
       glosses[w] ||
       glosses[w.toLowerCase()] ||
       "…";
-    const ipa =
+    const raw =
       (fromInfo && fromInfo.ipa) ||
       pronunciations[w] ||
       pronunciations[w.toLowerCase()] ||
       "";
-    const entry = { en: String(en).trim(), ipa: String(ipa).trim() };
-    infoCache.set(w.toLowerCase(), entry);
+    const entry = {
+      en: String(en).trim(),
+      ipa: normalizeSay(String(raw)),
+    };
+    infoCache.set(cacheKey(w), entry);
     next[w] = entry;
   }
   return next;

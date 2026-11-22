@@ -12,6 +12,23 @@ export type WordInfo = {
   ipa: string;
 };
 
+/** True if value looks like IPA (/…/ or phonetic symbols), not English respelling. */
+export function looksLikeIpa(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+  if (/^\/.+\/$/.test(t)) return true;
+  return /[əɛɔɑœøʃʒʁɲɥɡɨθð]/.test(t);
+}
+
+/** Keep English sound-alikes; drop IPA-looking strings. */
+export function normalizeSay(raw: string): string {
+  const t = String(raw || "")
+    .trim()
+    .slice(0, 64);
+  if (!t || looksLikeIpa(t)) return "";
+  return t;
+}
+
 /** Lowercase lemma → short English gloss */
 export const LOCAL_GLOSS: Record<string, string> = {
   // pronouns / determiners

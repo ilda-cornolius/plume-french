@@ -5,6 +5,7 @@ import {
   infoManyLocal,
   localGloss,
   localIpa,
+  normalizeSay,
   type WordInfo,
 } from "@/lib/fr-gloss";
 
@@ -12,19 +13,6 @@ const bodySchema = z.object({
   words: z.array(z.string().min(1).max(64)).min(1).max(80),
   context: z.string().max(800).optional(),
 });
-
-/** True if value looks like IPA (/…/ with phonetic symbols), not English respelling. */
-function looksLikeIpa(s: string): boolean {
-  const t = s.trim();
-  if (/^\/.+\/$/.test(t)) return true;
-  return /[əɛɔɑœøʃʒʁɲɥɡɨθð]/.test(t);
-}
-
-function normalizeSay(raw: string): string {
-  const t = String(raw).trim().slice(0, 64);
-  if (!t || looksLikeIpa(t)) return "";
-  return t;
-}
 
 export async function GET() {
   return NextResponse.json({

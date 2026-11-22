@@ -18,15 +18,19 @@ export function GlossToggle({ enabled, onChange, className }: Props) {
           ? "English meanings on. Click to hide."
           : "English meanings off. Click to show."
       }
-      onClick={() => onChange(!enabled)}
-      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onChange(!enabled);
+      }}
+      className={`inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-semibold transition select-none ${
         enabled
           ? "border-citrus/50 bg-citrus/15 text-citrus"
           : "border-[var(--line)] bg-ink/40 text-mist hover:text-paper"
       } ${className || ""}`}
     >
       <span
-        className={`relative h-4 w-7 shrink-0 rounded-full transition ${
+        className={`pointer-events-none relative h-4 w-7 shrink-0 rounded-full transition ${
           enabled ? "bg-citrus" : "bg-mist/30"
         }`}
         aria-hidden
@@ -37,7 +41,9 @@ export function GlossToggle({ enabled, onChange, className }: Props) {
           }`}
         />
       </span>
-      <span>{enabled ? "EN under FR: On" : "EN under FR: Off"}</span>
+      <span className="pointer-events-none">
+        {enabled ? "EN under FR: On" : "EN under FR: Off"}
+      </span>
     </button>
   );
 }
