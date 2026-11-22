@@ -13,8 +13,10 @@ const zstdDecompressSync = (
   }
 ).zstdDecompressSync;
 
+/** Protocol 11 (zstd + anki-sync header). Multipart fallback uses v10. */
 const SYNC_VER = 11;
-const CLIENT_VER = "anki,25.07.5";
+/** Matches Anki / fastanki shape: anki,<version> (<tag>),<platform> */
+const CLIENT_VER = "anki,25.07.5 (plume),linux";
 const DEFAULT_ENDPOINT = "https://sync.ankiweb.net/";
 
 export type AnkiAuth = {
@@ -41,17 +43,30 @@ export type AnkiCollectionData = {
   syncedAt: string;
 };
 
+export type AnkiDebugProbe = {
+  endpointTried: string;
+  method: string;
+  transport: "zstd" | "multipart";
+  status: number;
+  headerNames: string[];
+  location: string | null;
+  bodyPreview: string;
+  bodyLen: number;
+  hasOriginalSize: boolean;
+};
+
 function sessionKey(): string {
+  // Same shape as fastanki / Anki simple_session_id (32-bit → short id)
   return Math.floor(Math.random() * 0xffffffff)
     .toString(16)
     .padStart(8, "0");
 }
 
-function encodeAnkiSyncHeader(hkey: string, skey: string): string {
-  return JSON.stringify({ v: SYNC_VER, k: hkey, c: CLIENT_VER, s: skey });
+function encodeAnkiSyncHeader(hkey: string, skey: string, ver = SYNC_VER): string {
+  return JSON.stringify({ v: ver, k: hkey, c: CLIENT_VER, s: skey });
 }
 
-function maybeDecompress(buf: Buffer, hasOriginalSize: boolean): Buffer {
+function maybeDecompressZstd(buf: Buffer, hasOriginalSize: boolean): Buffer {
   if (!hasOriginalSize) return buf;
   try {
     return zstdDecompressSync(buf);
@@ -87,7 +102,11 @@ export function endpointFromHostNum(hostNum: number | string | undefined): strin
   return `https://sync${n}.ankiweb.net/`;
 }
 
-const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+/**
+ * Official open-source Anki follows HTTP 308. AnkiWeb production also returns
+ * 303 + Location for regional host routing — follow both when Location is set.
+ */
+const HOST_REDIRECT_STATUSES = new Set([303, 308]);
 
 function candidateEndpoints(preferred: string): string[] {
   const list = [
@@ -98,300 +117,304 @@ function candidateEndpoints(preferred: string): string[] {
   return [...new Set(list)];
 }
 
-async function postSync(
-  endpoint: string,
-  method: string,
-  hkey: string,
-  obj: Record<string, unknown> | null,
-  skey: string,
-  redirectDepth = 0
-): Promise<{ endpoint: string; body: Buffer }> {
-  if (redirectDepth > 8) {
-    throw new Error("Too many AnkiWeb redirects");
-  }
-
-  const base = endpoint.replace(/\/?$/, "/");
-  const payload = zstdCompressSync(
-    Buffer.from(JSON.stringify(obj ?? {}), "utf8")
-  );
-  const url = `${base}sync/${method}`;
-
-  const res = await rawRequest(url, {
-    method: "POST",
-    headers: {
-      "anki-sync": encodeAnkiSyncHeader(hkey, skey),
-      "Content-Type": "application/octet-stream",
-      Accept: "*/*",
-      "User-Agent": CLIENT_VER,
-    },
-    body: payload,
-  });
-
-  if (REDIRECT_STATUSES.has(res.status)) {
-    const loc = pickLocation(res.headers);
-    if (!loc) {
-      // No Location — try known regional hosts (common when front door returns bare 303)
-      if (redirectDepth === 0) {
-        for (const ep of candidateEndpoints(base)) {
-          if (ep === base) continue;
-          try {
-            return await postSync(ep, method, hkey, obj, skey, redirectDepth + 1);
-          } catch {
-            // try next host
-          }
-        }
-      }
-      throw new Error(
-        `AnkiWeb ${method} redirect ${res.status} without Location (headers: ${res.headerNames.join(", ") || "none"})`
-      );
-    }
-    const next = normalizeEndpoint(loc, base);
-    return postSync(next, method, hkey, obj, skey, redirectDepth + 1);
-  }
-
-  if (res.status < 200 || res.status >= 300) {
-    const errText = res.body.toString("utf8").slice(0, 160);
-    throw new Error(
-      `AnkiWeb ${method} failed (${res.status})${errText ? `: ${errText}` : ""}`
+function describeStatus(status: number, body: Buffer, location: string | null): string {
+  const preview = body.toString("utf8").slice(0, 80).replace(/\s+/g, " ");
+  if (status === 303) {
+    return (
+      `AnkiWeb returned HTTP 303 (app error, not a host redirect` +
+      `${location ? `; Location=${location}` : "; no Location"}` +
+      `${preview ? `; body=${preview}` : ""}). ` +
+      `This usually means the sync request was rejected or the connection was interrupted.`
     );
   }
-
-  const hasOriginal = "anki-original-size" in res.headers;
-  const body = maybeDecompress(res.body, hasOriginal);
-  return { endpoint: base, body };
+  return `AnkiWeb HTTP ${status}${preview ? `: ${preview}` : ""}`;
 }
 
-async function downloadOnce(
-  endpoint: string,
-  hkey: string,
-  skey: string
-): Promise<{
-  endpoint: string;
+function buildMultipart(fields: Record<string, string | Buffer>): {
   body: Buffer;
-  status: number;
-  headerNames: string[];
-  location: string | null;
-  hasOriginalSize: boolean;
-}> {
-  const base = endpoint.replace(/\/?$/, "/");
-  const payload = zstdCompressSync(Buffer.from("{}", "utf8"));
-  const url = `${base}sync/download`;
-  const res = await rawRequest(url, {
-    method: "POST",
-    headers: {
-      "anki-sync": encodeAnkiSyncHeader(hkey, skey),
-      "Content-Type": "application/octet-stream",
-      Accept: "*/*",
-      "User-Agent": CLIENT_VER,
-    },
-    body: payload,
-  });
-  return {
-    endpoint: base,
-    body: res.body,
-    status: res.status,
-    headerNames: res.headerNames,
-    location: pickLocation(res.headers),
-    hasOriginalSize: "anki-original-size" in res.headers,
-  };
-}
-
-function decodeDownloadBody(body: Buffer, hasOriginalSize: boolean): Buffer {
-  const decompressed = maybeDecompress(body, hasOriginalSize);
-  const magic = decompressed.subarray(0, 15).toString("utf8");
-  if (magic.startsWith("SQLite format 3")) return decompressed;
-  if (!hasOriginalSize) {
-    try {
-      const again = zstdDecompressSync(body);
-      if (again.subarray(0, 15).toString("utf8").startsWith("SQLite format 3")) {
-        return again;
-      }
-    } catch {
-      // keep
-    }
+  contentType: string;
+} {
+  const boundary = `----PlumeAnki${Date.now().toString(16)}`;
+  const chunks: Buffer[] = [];
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n`
+      )
+    );
+    chunks.push(Buffer.isBuffer(value) ? value : Buffer.from(String(value), "utf8"));
+    chunks.push(Buffer.from("\r\n"));
   }
-  return decompressed;
+  chunks.push(Buffer.from(`--${boundary}--\r\n`));
+  return {
+    body: Buffer.concat(chunks),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
 }
 
 /**
- * Full collection download with redirect + regional host fallback.
+ * One AnkiWeb sync session — stable skey for the lifetime of the client,
+ * matching HttpSyncClient / fastanki SyncServer.
  */
-async function downloadWithRedirects(
-  endpoint: string,
-  hkey: string,
-  skey: string,
-  redirectDepth = 0
-): Promise<{ endpoint: string; body: Buffer }> {
-  if (redirectDepth > 10) {
-    throw new Error("Too many AnkiWeb download redirects");
+export class SyncClient {
+  hkey: string;
+  endpoint: string;
+  readonly skey: string;
+
+  constructor(auth: AnkiAuth, skey = sessionKey()) {
+    this.hkey = auth.hkey;
+    this.endpoint = auth.endpoint.replace(/\/?$/, "/") || DEFAULT_ENDPOINT;
+    this.skey = skey;
   }
 
-  const first = await downloadOnce(endpoint, hkey, skey);
+  toAuth(): AnkiAuth {
+    return { hkey: this.hkey, endpoint: this.endpoint };
+  }
 
-  if (REDIRECT_STATUSES.has(first.status)) {
-    if (first.location) {
-      const absolute = new URL(first.location, first.endpoint).toString();
-      const path = new URL(absolute).pathname;
-      // One-shot file URL → GET; sync host → re-POST
-      if (!/\/sync(\/|$)/i.test(path)) {
-        const getRes = await rawRequest(absolute, {
-          method: "GET",
-          headers: {
-            Accept: "*/*",
-            "User-Agent": CLIENT_VER,
-            "anki-sync": encodeAnkiSyncHeader(hkey, skey),
-          },
-        });
-        if (getRes.status >= 200 && getRes.status < 300) {
-          return {
-            endpoint: first.endpoint,
-            body: decodeDownloadBody(
-              getRes.body,
-              "anki-original-size" in getRes.headers
-            ),
-          };
-        }
+  private async postZstd(
+    method: string,
+    payload: Buffer,
+    redirectDepth = 0
+  ): Promise<{ body: Buffer; hasOriginalSize: boolean; status: number }> {
+    if (redirectDepth > 8) throw new Error("Too many AnkiWeb 308 redirects");
+
+    const base = this.endpoint.replace(/\/?$/, "/");
+    const url = `${base}sync/${method}`;
+    const res = await rawRequest(url, {
+      method: "POST",
+      headers: {
+        "anki-sync": encodeAnkiSyncHeader(this.hkey, this.skey, SYNC_VER),
+        "Content-Type": "application/octet-stream",
+        Accept: "*/*",
+        "User-Agent": CLIENT_VER,
+      },
+      body: payload,
+      timeoutMs: 120_000,
+    });
+
+    if (HOST_REDIRECT_STATUSES.has(res.status)) {
+      const loc = pickLocation(res.headers);
+      if (loc) {
+        this.endpoint = normalizeEndpoint(loc, base);
+        return this.postZstd(method, payload, redirectDepth + 1);
       }
-      const next = normalizeEndpoint(first.location, first.endpoint);
-      return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
+      // Bare 303/308 without Location is an app error (body often echoes the code)
+      throw new Error(describeStatus(res.status, res.body, null));
     }
 
-    // Bare 303/302 with no Location — probe regional sync hosts
-    const errors: string[] = [
-      `${first.endpoint}→${first.status}(no Location; headers: ${first.headerNames.join("|") || "none"})`,
-    ];
-    for (const ep of candidateEndpoints(first.endpoint)) {
-      if (ep === first.endpoint) continue;
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(describeStatus(res.status, res.body, pickLocation(res.headers)));
+    }
+
+    return {
+      body: maybeDecompressZstd(res.body, "anki-original-size" in res.headers),
+      hasOriginalSize: "anki-original-size" in res.headers,
+      status: res.status,
+    };
+  }
+
+  private async postMultipart(
+    method: string,
+    jsonObj: Record<string, unknown> | null,
+    rawData?: Buffer,
+    opts: { includeSession?: boolean } = {}
+  ): Promise<{ body: Buffer; status: number }> {
+    const base = this.endpoint.replace(/\/?$/, "/");
+    const url = `${base}sync/${method}`;
+    const includeSession = opts.includeSession !== false;
+
+    // Legacy FullSyncer download: postVars = { k, v } only (no s, no data).
+    // Meta/other: { k, s } + gzip JSON data. Upload: { k, v } + file data.
+    const fields: Record<string, string | Buffer> = {
+      k: this.hkey,
+    };
+    if (includeSession) {
+      fields.s = this.skey;
+    }
+
+    if (method === "download" && jsonObj == null && rawData === undefined) {
+      // Match Anki desktop FullSyncer.download / AnkiDroid: no data field
+      fields.v = CLIENT_VER;
+      fields.c = "0";
+    } else if (rawData) {
+      fields.v = CLIENT_VER;
+      fields.c = "1";
+      fields.data = zlib.gzipSync(rawData);
+    } else {
+      fields.c = "1";
+      fields.data = zlib.gzipSync(
+        Buffer.from(JSON.stringify(jsonObj ?? {}), "utf8")
+      );
+    }
+
+    const { body, contentType } = buildMultipart(fields);
+    const res = await rawRequest(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": contentType,
+        Accept: "*/*",
+        "User-Agent": CLIENT_VER,
+      },
+      body,
+      timeoutMs: 120_000,
+    });
+
+    if (HOST_REDIRECT_STATUSES.has(res.status)) {
+      const loc = pickLocation(res.headers);
+      if (loc) {
+        this.endpoint = normalizeEndpoint(loc, base);
+        return this.postMultipart(method, jsonObj, rawData, opts);
+      }
+    }
+
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(
+        `multipart ${describeStatus(res.status, res.body, pickLocation(res.headers))}`
+      );
+    }
+
+    // Legacy responses are uncompressed bytes (sqlite or JSON)
+    return { body: res.body, status: res.status };
+  }
+
+  async json(
+    method: string,
+    obj: Record<string, unknown> | null = null
+  ): Promise<Record<string, unknown>> {
+    const payload = zstdCompressSync(
+      Buffer.from(JSON.stringify(obj ?? {}), "utf8")
+    );
+    try {
+      const { body } = await this.postZstd(method, payload);
+      return JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+    } catch (zstdErr) {
+      // Fall back to multipart v10 for stubborn AnkiWeb edges
       try {
-        const attempt = await downloadOnce(ep, hkey, skey);
-        if (REDIRECT_STATUSES.has(attempt.status)) {
-          if (attempt.location) {
-            const next = normalizeEndpoint(attempt.location, ep);
-            return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
-          }
-          errors.push(`${ep}→${attempt.status}(no Location)`);
-          continue;
+        const { body } = await this.postMultipart(method, obj);
+        return JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+      } catch {
+        throw zstdErr;
+      }
+    }
+  }
+
+  async downloadBytes(): Promise<Buffer> {
+    const payload = zstdCompressSync(Buffer.from("{}", "utf8"));
+    const errors: string[] = [];
+
+    // 1) zstd on current endpoint (follows 308)
+    try {
+      const { body } = await this.postZstd("download", payload);
+      return ensureSqlite(body);
+    } catch (e) {
+      errors.push(`zstd@${this.endpoint}: ${e instanceof Error ? e.message : "err"}`);
+    }
+
+    // 2) multipart download — FullSyncer style (k+v, no s) then with s
+    for (const includeSession of [false, true]) {
+      try {
+        const { body } = await this.postMultipart("download", null, undefined, {
+          includeSession,
+        });
+        if (body.toString("utf8") === "upgradeRequired") {
+          throw new Error("AnkiWeb requires a newer client (upgradeRequired)");
         }
-        if (attempt.status >= 200 && attempt.status < 300) {
-          return {
-            endpoint: ep,
-            body: decodeDownloadBody(attempt.body, attempt.hasOriginalSize),
-          };
-        }
-        errors.push(`${ep}→${attempt.status}`);
+        return ensureSqlite(body);
       } catch (e) {
         errors.push(
-          `${ep}→${e instanceof Error ? e.message.slice(0, 40) : "err"}`
+          `multipart(s=${includeSession})@${this.endpoint}: ${shortErr(e)}`
         );
       }
     }
+
+    // 3) Probe regional hosts with both transports (hostNum may be stale)
+    for (const ep of candidateEndpoints(this.endpoint)) {
+      if (ep === this.endpoint) continue;
+      const prev = this.endpoint;
+      this.endpoint = ep;
+      try {
+        const { body } = await this.postZstd("download", payload);
+        return ensureSqlite(body);
+      } catch (e) {
+        errors.push(`zstd@${ep}: ${shortErr(e)}`);
+      }
+      try {
+        const { body } = await this.postMultipart("download", null, undefined, {
+          includeSession: false,
+        });
+        if (body.toString("utf8") === "upgradeRequired") {
+          throw new Error("AnkiWeb requires a newer client (upgradeRequired)");
+        }
+        return ensureSqlite(body);
+      } catch (e) {
+        errors.push(`multipart@${ep}: ${shortErr(e)}`);
+      }
+      this.endpoint = prev;
+    }
+
     throw new Error(
-      `AnkiWeb download redirect ${first.status} without Location; tried: ${errors.slice(0, 8).join("; ")}`
+      `AnkiWeb download failed after zstd+multipart probes. ${errors.slice(0, 6).join(" | ")}`
     );
   }
 
-  if (first.status < 200 || first.status >= 300) {
-    const errText = first.body.toString("utf8").slice(0, 160);
-    if (redirectDepth === 0) {
-      for (const ep of candidateEndpoints(first.endpoint)) {
-        if (ep === first.endpoint) continue;
-        try {
-          return await downloadWithRedirects(ep, hkey, skey, redirectDepth + 1);
-        } catch {
-          // continue
-        }
+  async uploadBytes(dbBytes: Uint8Array): Promise<void> {
+    const compressed = zstdCompressSync(Buffer.from(dbBytes));
+    try {
+      await this.postZstd("upload", compressed);
+      return;
+    } catch (zstdErr) {
+      try {
+        await this.postMultipart("upload", null, Buffer.from(dbBytes));
+        return;
+      } catch {
+        throw zstdErr;
       }
     }
-    throw new Error(
-      `AnkiWeb download failed (${first.status})${errText ? `: ${errText}` : ""}`
-    );
   }
 
-  return {
-    endpoint: first.endpoint,
-    body: decodeDownloadBody(first.body, first.hasOriginalSize),
-  };
-}
-
-export async function ankiLogin(
-  username: string,
-  password: string,
-  endpoint = DEFAULT_ENDPOINT
-): Promise<AnkiAuth> {
-  const skey = sessionKey();
-  const { endpoint: ep, body } = await postSync(
-    endpoint,
-    "hostKey",
-    "",
-    { u: username, p: password },
-    skey
-  );
-  const parsed = JSON.parse(body.toString("utf8")) as { key?: string };
-  if (!parsed.key) {
-    throw new Error("AnkiWeb login failed: no host key returned");
-  }
-  return { hkey: parsed.key, endpoint: ep };
-}
-
-export async function ankiMeta(
-  auth: AnkiAuth
-): Promise<{ meta: Record<string, unknown>; endpoint: string }> {
-  const skey = sessionKey();
-  const { endpoint, body } = await postSync(
-    auth.endpoint,
-    "meta",
-    auth.hkey,
-    {
+  /** meta + 308/hostNum resolution (mutates this.endpoint). */
+  async meta(): Promise<Record<string, unknown>> {
+    const meta = await this.json("meta", {
       v: SYNC_VER,
       cv: CLIENT_VER,
-    },
-    skey
-  );
-  const meta = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+    });
 
-  let resolved = endpoint;
-  const newEp =
-    (typeof meta.new_endpoint === "string" && meta.new_endpoint) ||
-    (typeof meta.endpoint === "string" && meta.endpoint) ||
-    null;
-  if (newEp) {
-    resolved = normalizeEndpoint(newEp, endpoint);
-  } else if (meta.hostNum !== undefined || meta.host_number !== undefined) {
-    const fromHost = endpointFromHostNum(
-      (meta.hostNum ?? meta.host_number) as number | string
-    );
-    if (fromHost) resolved = fromHost;
+    const newEp =
+      (typeof meta.new_endpoint === "string" && meta.new_endpoint) ||
+      (typeof meta.endpoint === "string" && meta.endpoint) ||
+      null;
+    if (newEp) {
+      this.endpoint = normalizeEndpoint(newEp, this.endpoint);
+    } else if (meta.hostNum !== undefined || meta.host_number !== undefined) {
+      const fromHost = endpointFromHostNum(
+        (meta.hostNum ?? meta.host_number) as number | string
+      );
+      if (fromHost) this.endpoint = fromHost;
+    }
+    return meta;
   }
-
-  return { meta, endpoint: resolved };
 }
 
-export async function ankiDownloadCollection(
-  auth: AnkiAuth
-): Promise<{ bytes: Uint8Array; endpoint: string }> {
-  let endpoint = auth.endpoint;
-  try {
-    const { endpoint: ep } = await ankiMeta(auth);
-    endpoint = ep;
-  } catch {
-    // meta can fail; still try download / host probe
-  }
+function shortErr(e: unknown): string {
+  return e instanceof Error ? e.message.slice(0, 100) : "err";
+}
 
-  const skey = sessionKey();
-  const { endpoint: finalEp, body } = await downloadWithRedirects(
-    endpoint,
-    auth.hkey,
-    skey
-  );
-
+function ensureSqlite(body: Buffer): Buffer {
   const magic = body.subarray(0, 15).toString("utf8");
-  if (magic.startsWith("SQLite format 3")) {
-    return { bytes: new Uint8Array(body), endpoint: finalEp };
-  }
+  if (magic.startsWith("SQLite format 3")) return body;
   try {
     const again = zstdDecompressSync(body);
     if (again.subarray(0, 15).toString("utf8").startsWith("SQLite format 3")) {
-      return { bytes: new Uint8Array(again), endpoint: finalEp };
+      return again;
+    }
+  } catch {
+    // ignore
+  }
+  // gzip (multipart path)
+  try {
+    const gz = zlib.gunzipSync(body);
+    if (gz.subarray(0, 15).toString("utf8").startsWith("SQLite format 3")) {
+      return gz;
     }
   } catch {
     // ignore
@@ -401,67 +424,158 @@ export async function ankiDownloadCollection(
   );
 }
 
+export async function ankiLogin(
+  username: string,
+  password: string,
+  endpoint = DEFAULT_ENDPOINT
+): Promise<AnkiAuth> {
+  const client = new SyncClient({ hkey: "", endpoint });
+  const parsed = await client.json("hostKey", { u: username, p: password });
+  if (typeof parsed.key !== "string" || !parsed.key) {
+    throw new Error("AnkiWeb login failed: no host key returned");
+  }
+  client.hkey = parsed.key;
+  // Resolve regional host while skey is still this session
+  try {
+    await client.meta();
+  } catch {
+    // meta can fail on some accounts; hostKey is enough to connect
+  }
+  return client.toAuth();
+}
+
+export async function ankiMeta(
+  auth: AnkiAuth
+): Promise<{ meta: Record<string, unknown>; endpoint: string }> {
+  const client = new SyncClient(auth);
+  const meta = await client.meta();
+  return { meta, endpoint: client.endpoint };
+}
+
+export async function ankiDownloadCollection(
+  auth: AnkiAuth
+): Promise<{ bytes: Uint8Array; endpoint: string }> {
+  const client = new SyncClient(auth);
+  try {
+    await client.meta();
+  } catch {
+    // still attempt download / host probe
+  }
+  const body = await client.downloadBytes();
+  return { bytes: new Uint8Array(body), endpoint: client.endpoint };
+}
+
 export async function ankiUploadCollection(
   auth: AnkiAuth,
   dbBytes: Uint8Array
 ): Promise<string> {
-  const skey = sessionKey();
-  let endpoint = auth.endpoint.replace(/\/?$/, "/");
-  let depth = 0;
-
+  const client = new SyncClient(auth);
   try {
-    const { endpoint: ep } = await ankiMeta(auth);
-    endpoint = ep.replace(/\/?$/, "/");
+    await client.meta();
   } catch {
     // continue
   }
+  await client.uploadBytes(dbBytes);
+  return client.endpoint;
+}
 
-  while (depth < 8) {
-    const url = `${endpoint}sync/upload`;
-    const compressed = zstdCompressSync(Buffer.from(dbBytes));
-    const res = await rawRequest(url, {
-      method: "POST",
-      headers: {
-        "anki-sync": encodeAnkiSyncHeader(auth.hkey, skey),
-        "Content-Type": "application/octet-stream",
-        Accept: "*/*",
-        "User-Agent": CLIENT_VER,
-      },
-      body: compressed,
-    });
+/**
+ * Non-destructive probe for /api/anki/debug — never returns hkey.
+ * Tries meta + one download attempt per transport on the saved endpoint and first regional.
+ */
+export async function debugAnkiDownload(auth: AnkiAuth): Promise<{
+  skey: string;
+  clientVer: string;
+  probes: AnkiDebugProbe[];
+  meta: Record<string, unknown> | null;
+  metaError: string | null;
+  resolvedEndpoint: string;
+}> {
+  const client = new SyncClient(auth);
+  const probes: AnkiDebugProbe[] = [];
 
-    if (REDIRECT_STATUSES.has(res.status)) {
-      const loc = pickLocation(res.headers);
-      if (!loc) {
-        // probe regionals
-        let advanced = false;
-        for (const ep of candidateEndpoints(endpoint)) {
-          if (ep === endpoint) continue;
-          endpoint = ep;
-          advanced = true;
-          break;
-        }
-        if (!advanced) {
-          throw new Error(
-            `AnkiWeb upload redirect ${res.status} without Location (headers: ${res.headerNames.join(", ") || "none"})`
-          );
-        }
-        depth += 1;
-        continue;
-      }
-      endpoint = normalizeEndpoint(loc, endpoint);
-      depth += 1;
-      continue;
-    }
-
-    if (res.status < 200 || res.status >= 300) {
-      const errText = res.body.toString("utf8").slice(0, 160);
-      throw new Error(
-        `AnkiWeb upload failed (${res.status})${errText ? `: ${errText}` : ""}`
-      );
-    }
-    return endpoint;
+  let meta: Record<string, unknown> | null = null;
+  let metaError: string | null = null;
+  try {
+    meta = await client.meta();
+  } catch (e) {
+    metaError = e instanceof Error ? e.message : "meta failed";
   }
 
-  throw new Error("Too many AnkiWeb upload redirects");
+  const endpoints = [...new Set([client.endpoint, ...candidateEndpoints(client.endpoint)])].slice(
+    0,
+    4
+  );
+
+  for (const ep of endpoints) {
+    for (const transport of ["zstd", "multipart"] as const) {
+      const base = ep.replace(/\/?$/, "/");
+      const url = `${base}sync/download`;
+      try {
+        let res;
+        if (transport === "zstd") {
+          const payload = zstdCompressSync(Buffer.from("{}", "utf8"));
+          res = await rawRequest(url, {
+            method: "POST",
+            headers: {
+              "anki-sync": encodeAnkiSyncHeader(auth.hkey, client.skey, SYNC_VER),
+              "Content-Type": "application/octet-stream",
+              Accept: "*/*",
+              "User-Agent": CLIENT_VER,
+            },
+            body: payload,
+            timeoutMs: 60_000,
+          });
+        } else {
+          const { body, contentType } = buildMultipart({
+            k: auth.hkey,
+            v: CLIENT_VER,
+            c: "0",
+          });
+          res = await rawRequest(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": contentType,
+              Accept: "*/*",
+              "User-Agent": CLIENT_VER,
+            },
+            body,
+            timeoutMs: 60_000,
+          });
+        }
+        probes.push({
+          endpointTried: base,
+          method: "download",
+          transport,
+          status: res.status,
+          headerNames: res.headerNames,
+          location: pickLocation(res.headers),
+          bodyPreview: res.body.toString("utf8").slice(0, 60),
+          bodyLen: res.body.length,
+          hasOriginalSize: "anki-original-size" in res.headers,
+        });
+      } catch (e) {
+        probes.push({
+          endpointTried: base,
+          method: "download",
+          transport,
+          status: 0,
+          headerNames: [],
+          location: null,
+          bodyPreview: e instanceof Error ? e.message.slice(0, 60) : "err",
+          bodyLen: 0,
+          hasOriginalSize: false,
+        });
+      }
+    }
+  }
+
+  return {
+    skey: client.skey,
+    clientVer: CLIENT_VER,
+    probes,
+    meta,
+    metaError,
+    resolvedEndpoint: client.endpoint,
+  };
 }

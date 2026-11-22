@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     // Intentionally never log username/password or auth payloads
     let auth = await ankiLogin(username, password);
 
-    // Resolve regional host (303/hostNum) and persist that endpoint
+    // Resolve regional host (308/303 Location or hostNum) and persist it
     try {
       const { endpoint } = await ankiMeta(auth);
       auth = { ...auth, endpoint };
