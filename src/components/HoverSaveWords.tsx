@@ -185,6 +185,26 @@ export function HoverSaveWords({
 
   useEffect(() => () => clearHide(), []);
 
+  // Close save popup on outside pointer / Escape so it can't block the chat box
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setActive(null);
+    };
+    const onPointer = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('[role="dialog"]')) return;
+      if (t?.closest?.("button[aria-label]")) return;
+      setActive(null);
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onPointer, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onPointer, true);
+    };
+  }, [active]);
+
   const openWord = async (word: string, el: HTMLElement) => {
     clearHide();
     const rect = el.getBoundingClientRect();
@@ -278,6 +298,7 @@ export function HoverSaveWords({
           <button
             key={`${i}-${t.value}`}
             type="button"
+            tabIndex={-1}
             className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition hover:bg-citrus/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
               glossEnabled || pronunciationEnabled
                 ? "mx-0.5 py-0.5"
@@ -287,10 +308,9 @@ export function HoverSaveWords({
             onMouseLeave={scheduleHide}
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               void openWord(t.value, e.currentTarget);
             }}
-            onFocus={(e) => void openWord(t.value, e.currentTarget)}
-            onBlur={scheduleHide}
             aria-label={`${t.value}${glossEnabled && infoOf(t.value).en ? `: ${infoOf(t.value).en}` : ""}${pronunciationEnabled && infoOf(t.value).ipa ? ` ${infoOf(t.value).ipa}` : ""}. Save to Anki`}
           >
             <span className="leading-tight">{t.value}</span>
@@ -318,10 +338,14 @@ export function HoverSaveWords({
         <div
           role="dialog"
           aria-label={`Save ${active.word} to Anki`}
-          className="fixed z-50 -translate-x-1/2 -translate-y-full rounded-xl border border-[var(--line)] bg-ink px-3 py-2 shadow-glow"
-          style={{ left: active.x, top: active.y - 8 }}
+          className="pointer-events-auto fixed z-20 -translate-x-1/2 -translate-y-full rounded-xl border border-[var(--line)] bg-ink px-3 py-2 shadow-glow"
+          style={{
+            left: Math.min(Math.max(active.x, 72), (typeof window !== "undefined" ? window.innerWidth : 400) - 72),
+            top: Math.max(active.y - 8, 56),
+          }}
           onMouseEnter={clearHide}
           onMouseLeave={scheduleHide}
+          onPointerDown={(e) => e.stopPropagation()}
         >
           <p className="text-center text-sm font-semibold text-paper">
             {active.word}

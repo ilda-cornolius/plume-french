@@ -40,6 +40,7 @@ export function ChatPractice() {
   const [glossOn, setGlossOn] = useState(true);
   const [pronOn, setPronOn] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -135,6 +136,10 @@ export function ChatPractice() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    // Always clear the banner even if Strict Mode cancels the first run
+    const safety = setTimeout(() => setHydrating(false), 2500);
+
     (async () => {
       setHydrating(true);
       try {
@@ -142,6 +147,7 @@ export function ChatPractice() {
           credentials: "include",
         });
         const listData = await listRes.json();
+        if (cancelled) return;
         if (listData.ownerLabel) setOwnerLabel(listData.ownerLabel);
         const items: ConvSummary[] = (listData.conversations || []).map(
           (c: ConvSummary) => c
@@ -154,6 +160,7 @@ export function ChatPractice() {
             { credentials: "include" }
           );
           const detail = await detailRes.json();
+          if (cancelled) return;
           const conv = detail.conversation;
           if (conv?.id) {
             setConversationId(conv.id);
@@ -176,18 +183,27 @@ export function ChatPractice() {
             body: JSON.stringify({ kind: "chat" }),
           });
           const created = await createRes.json();
+          if (cancelled) return;
           if (created.conversation?.id) {
             setConversationId(created.conversation.id);
-            await persistMessages(created.conversation.id, [GREETING]);
+            void persistMessages(created.conversation.id, [GREETING]);
           }
         }
       } catch {
         // stay on greeting
       } finally {
-        setHydrating(false);
+        if (!cancelled) setHydrating(false);
       }
     })();
-  }, [persistMessages]);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(safety);
+      setHydrating(false);
+    };
+    // Restore once on mount — do not re-run when persist helpers change identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -368,8 +384,8 @@ export function ChatPractice() {
           </ul>
         </aside>
 
-        <div className="panel-interactive flex min-h-[420px] flex-col rounded-2xl p-4 sm:p-5">
-          <div className="mb-3 flex flex-wrap items-center gap-2 border-b border-[var(--line)] pb-3">
+        <div className="panel-chat relative z-10 flex h-[min(70vh,720px)] min-h-[420px] flex-col overflow-hidden rounded-2xl p-4 sm:p-5 [transform:translateZ(0)]">
+          <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--line)] pb-3">
             <GlossToggle
               enabled={glossOn}
               onChange={(on) => {
@@ -390,10 +406,7 @@ export function ChatPractice() {
                 : "Pronunciation tips hidden"}
             </p>
           </div>
-          <div
-            className="flex-1 space-y-3 overflow-y-auto pr-1"
-            style={{ maxHeight: "52vh" }}
-          >
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
             {messages.map((m, i) => (
               <div
                 key={`${i}-${m.role}`}
@@ -427,22 +440,46 @@ export function ChatPractice() {
           </div>
 
           <form
-            className="mt-4 flex flex-wrap gap-2 border-t border-[var(--line)] pt-4"
+            className="relative z-50 mt-4 flex shrink-0 flex-wrap gap-2 border-t border-[var(--line)] bg-[#0c2430] pt-4"
             onSubmit={(e) => {
               e.preventDefault();
               send();
             }}
           >
-            <input
+            <textarea
+              ref={inputRef}
+              id="plume-chat-input"
+              name="message"
+              rows={1}
+              inputMode="text"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck
+              enterKeyHint="send"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  send();
+                }
+              }}
+              onPointerDown={(e) => {
+                // Cursor embedded browser: force focus; keep above word popovers
+                e.stopPropagation();
+                const el = e.currentTarget;
+                requestAnimationFrame(() => {
+                  el.focus({ preventScroll: true });
+                });
+              }}
               placeholder="Écris en français (ou Franglais)…"
-              className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[#f4fafb] px-5 py-3.5 text-lg text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
+              className="pointer-events-auto relative z-50 min-h-[3.25rem] min-w-0 flex-1 resize-none touch-manipulation select-text rounded-[1.75rem] border border-[var(--line)] bg-[#f4fafb] px-5 py-3.5 text-lg leading-snug text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
+              style={{ WebkitUserSelect: "text", userSelect: "text" }}
             />
             <button
               type="submit"
               disabled={pending || !input.trim()}
-              className="rounded-full bg-citrus px-6 py-3.5 text-base font-semibold text-ink hover:bg-citrus-dim disabled:opacity-40"
+              className="relative z-50 touch-manipulation self-end rounded-full bg-citrus px-6 py-3.5 text-base font-semibold text-ink hover:bg-citrus-dim disabled:opacity-40"
             >
               Envoyer
             </button>
