@@ -7,8 +7,11 @@ import {
   HoverSaveWords,
   readGlossEnabled,
   writeGlossEnabled,
+  readPronunciationEnabled,
+  writePronunciationEnabled,
 } from "@/components/HoverSaveWords";
 import { GlossToggle } from "@/components/GlossToggle";
+import { PronunciationToggle } from "@/components/PronunciationToggle";
 
 type Issue = {
   type: string;
@@ -78,9 +81,11 @@ export function WritingPractice() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ownerLabel, setOwnerLabel] = useState("This browser");
   const [glossOn, setGlossOn] = useState(true);
+  const [pronOn, setPronOn] = useState(true);
 
   useEffect(() => {
     setGlossOn(readGlossEnabled());
+    setPronOn(readPronunciationEnabled());
   }, []);
 
   const refreshHistory = useCallback(async () => {
@@ -287,15 +292,22 @@ export function WritingPractice() {
         </h1>
         <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
           Type mixed French and English however it comes out. Sessions save for{" "}
-          <span className="text-paper">{ownerLabel}</span>. Toggle English under
-          French; hover words to send them to Anki.
+          <span className="text-paper">{ownerLabel}</span>. Toggle English and
+          pronunciation under French; hover words to send them to Anki.
         </p>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <GlossToggle
             enabled={glossOn}
             onChange={(on) => {
               setGlossOn(on);
               writeGlossEnabled(on);
+            }}
+          />
+          <PronunciationToggle
+            enabled={pronOn}
+            onChange={(on) => {
+              setPronOn(on);
+              writePronunciationEnabled(on);
             }}
           />
         </div>
@@ -423,6 +435,7 @@ export function WritingPractice() {
                   <HoverSaveWords
                     text={result.corrected}
                     glossEnabled={glossOn}
+                    pronunciationEnabled={pronOn}
                     onSaved={(_w, msg) => setAnkiMsg(msg)}
                     onError={(msg) => setAnkiMsg(msg)}
                   />

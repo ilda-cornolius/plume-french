@@ -41,8 +41,9 @@ Until these are set, the nav shows “Google login off”; the rest of the app s
 
 - **Écrire** — Franglais → French (Gemini); XP / levels / streaks; **Save to AnkiWeb**; past sessions restored
 - **Parler** — conversation chat (Gemini) with **server-side history** (Postgres on publish / PGlite locally)
-- **Hover → Anki** — hover (or tap) a word → English + IPA + save to `Plume · Appris`
-- **EN + IPA under FR** — toggle interlinear English glosses and pronunciation
+- **Hover → Anki** — hover (or tap) a word → save to `Plume · Appris`
+- **EN under FR** — toggle English glosses under French words
+- **Pronunciation** — toggle IPA under words and in the hover popup
 - **Anki** — AnkiWeb connect / refresh / upload to `Plume · Appris`
 - **PWA** — installable on Android Chrome (Add to Home Screen) via `manifest.webmanifest` + service worker
 - **Google login** — Auth.js (NextAuth v5); chats keyed by Cursor identity → Google → cookie

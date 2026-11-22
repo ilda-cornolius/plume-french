@@ -37,7 +37,7 @@ export function GlossToggle({ enabled, onChange, className }: Props) {
           }`}
         />
       </span>
-      <span>{enabled ? "EN + IPA under FR: On" : "EN + IPA under FR: Off"}</span>
+      <span>{enabled ? "EN under FR: On" : "EN under FR: Off"}</span>
     </button>
   );
 }

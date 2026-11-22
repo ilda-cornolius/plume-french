@@ -5,8 +5,11 @@ import {
   HoverSaveWords,
   readGlossEnabled,
   writeGlossEnabled,
+  readPronunciationEnabled,
+  writePronunciationEnabled,
 } from "@/components/HoverSaveWords";
 import { GlossToggle } from "@/components/GlossToggle";
+import { PronunciationToggle } from "@/components/PronunciationToggle";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -35,11 +38,13 @@ export function ChatPractice() {
   const [ownerLabel, setOwnerLabel] = useState<string>("This browser");
   const [hydrating, setHydrating] = useState(true);
   const [glossOn, setGlossOn] = useState(true);
+  const [pronOn, setPronOn] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setGlossOn(readGlossEnabled());
+    setPronOn(readPronunciationEnabled());
   }, []);
 
   const refreshHistory = useCallback(async () => {
@@ -323,6 +328,13 @@ export function ChatPractice() {
               writeGlossEnabled(on);
             }}
           />
+          <PronunciationToggle
+            enabled={pronOn}
+            onChange={(on) => {
+              setPronOn(on);
+              writePronunciationEnabled(on);
+            }}
+          />
           <p className="text-[11px] uppercase tracking-wide text-mist/50">
             Engine: {provider}
             {hydrating ? " · restoring…" : ""}
@@ -393,6 +405,7 @@ export function ChatPractice() {
                     <HoverSaveWords
                       text={m.content}
                       glossEnabled={glossOn}
+                      pronunciationEnabled={pronOn}
                       onSaved={(_w, msg) => setAnkiHint(msg)}
                       onError={(msg) => setAnkiHint(msg)}
                     />
@@ -436,8 +449,8 @@ export function ChatPractice() {
             </p>
           )}
           <p className="mt-2 text-[11px] text-mist/45">
-            Tip: toggle EN + IPA under French words; hover always shows meaning
-            + pronunciation → Save to Anki · Appris (connect AnkiWeb first).
+            Tip: use the EN and Pronunciation toggles; hover a word → Save to
+            Anki · Appris (connect AnkiWeb first).
           </p>
         </div>
       </div>

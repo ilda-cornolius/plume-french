@@ -7,8 +7,10 @@ type WordInfo = { en: string; ipa: string };
 type Props = {
   text: string;
   className?: string;
-  /** FL-12: show English under each French word (IPA also when on) */
+  /** FL-12: show English under each French word */
   glossEnabled?: boolean;
+  /** FL-13: show IPA under words / in hover popup */
+  pronunciationEnabled?: boolean;
   onSaved?: (word: string, message: string) => void;
   onError?: (message: string) => void;
 };
@@ -88,12 +90,13 @@ async function fetchWordInfo(
 }
 
 /**
- * FL-9/12/13: hover save to Anki; English under FR when toggled; IPA on hover (and under FR when toggled).
+ * FL-9/12/13: hover save to Anki; EN under FR (toggle); IPA under FR / hover (toggle).
  */
 export function HoverSaveWords({
   text,
   className,
   glossEnabled = false,
+  pronunciationEnabled = false,
   onSaved,
   onError,
 }: Props) {
@@ -117,7 +120,7 @@ export function HoverSaveWords({
     .filter(isSaveableWord);
 
   useEffect(() => {
-    if (!glossEnabled || words.length === 0) return;
+    if ((!glossEnabled && !pronunciationEnabled) || words.length === 0) return;
     let cancelled = false;
     setLoading(true);
     fetchWordInfo(words, text)
@@ -132,7 +135,7 @@ export function HoverSaveWords({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [glossEnabled, text]);
+  }, [glossEnabled, pronunciationEnabled, text]);
 
   const infoOf = useCallback(
     (word: string): WordInfo => {
@@ -255,7 +258,7 @@ export function HoverSaveWords({
             key={`${i}-${t.value}`}
             type="button"
             className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition hover:bg-citrus/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
-              glossEnabled
+              glossEnabled || pronunciationEnabled
                 ? "mx-0.5 py-0.5"
                 : "border-b border-dotted border-transparent hover:border-citrus/70"
             }`}
@@ -267,23 +270,23 @@ export function HoverSaveWords({
             }}
             onFocus={(e) => void openWord(t.value, e.currentTarget)}
             onBlur={scheduleHide}
-            aria-label={`${t.value}${infoOf(t.value).en ? `: ${infoOf(t.value).en}` : ""}${infoOf(t.value).ipa ? ` ${infoOf(t.value).ipa}` : ""}. Save to Anki`}
+            aria-label={`${t.value}${glossEnabled && infoOf(t.value).en ? `: ${infoOf(t.value).en}` : ""}${pronunciationEnabled && infoOf(t.value).ipa ? ` ${infoOf(t.value).ipa}` : ""}. Save to Anki`}
           >
             <span className="leading-tight">{t.value}</span>
             {glossEnabled && (
-              <>
-                <span className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] font-normal leading-tight text-mist/80">
-                  {infoOf(t.value).en || (loading ? "…" : "·")}
-                </span>
-                {infoOf(t.value).ipa ? (
-                  <span className="max-w-[7.5rem] truncate text-center font-mono text-[9px] font-normal leading-tight text-mist/55">
-                    {infoOf(t.value).ipa}
-                  </span>
-                ) : null}
-              </>
+              <span className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] font-normal leading-tight text-mist/80">
+                {infoOf(t.value).en || (loading ? "…" : "·")}
+              </span>
             )}
+            {pronunciationEnabled && infoOf(t.value).ipa ? (
+              <span className="max-w-[7.5rem] truncate text-center font-mono text-[9px] font-normal leading-tight text-mist/55">
+                {infoOf(t.value).ipa}
+              </span>
+            ) : null}
           </button>
-        ) : glossEnabled && t.type === "other" && /^\s+$/.test(t.value) ? (
+        ) : (glossEnabled || pronunciationEnabled) &&
+          t.type === "other" &&
+          /^\s+$/.test(t.value) ? (
           <span key={`${i}-o`} className="inline-block w-1.5" />
         ) : (
           <span key={`${i}-o`}>{t.value}</span>
@@ -303,15 +306,18 @@ export function HoverSaveWords({
             {active.word}
           </p>
           <p className="text-center text-xs text-mist">
-            {active.en && active.en !== "…" ? active.en : infoOf(active.word).en || "…"}
+            {active.en && active.en !== "…"
+              ? active.en
+              : infoOf(active.word).en || "…"}
           </p>
-          {(active.ipa || infoOf(active.word).ipa) && (
+          {pronunciationEnabled && (active.ipa || infoOf(active.word).ipa) ? (
             <p className="mb-1.5 text-center font-mono text-[11px] text-citrus/90">
               {active.ipa || infoOf(active.word).ipa}
             </p>
-          )}
-          {!(active.ipa || infoOf(active.word).ipa) && (
+          ) : pronunciationEnabled ? (
             <p className="mb-1.5 text-center text-[10px] text-mist/50">…</p>
+          ) : (
+            <div className="mb-1.5" />
           )}
           <button
             type="button"
@@ -320,7 +326,9 @@ export function HoverSaveWords({
               saveWord(
                 active.word,
                 active.en || infoOf(active.word).en,
-                active.ipa || infoOf(active.word).ipa
+                pronunciationEnabled
+                  ? active.ipa || infoOf(active.word).ipa
+                  : ""
               )
             }
             className="whitespace-nowrap rounded-full bg-citrus px-3 py-1.5 text-xs font-semibold text-ink hover:bg-citrus-dim disabled:opacity-50"
@@ -340,6 +348,7 @@ export function HoverSaveWords({
 }
 
 export const GLOSS_TOGGLE_KEY = "plume_gloss_en";
+export const PRONUNCIATION_TOGGLE_KEY = "plume_pronunciation";
 
 export function readGlossEnabled(): boolean {
   if (typeof window === "undefined") return true;
@@ -355,6 +364,25 @@ export function readGlossEnabled(): boolean {
 export function writeGlossEnabled(on: boolean) {
   try {
     localStorage.setItem(GLOSS_TOGGLE_KEY, on ? "1" : "0");
+  } catch {
+    // ignore
+  }
+}
+
+export function readPronunciationEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const v = localStorage.getItem(PRONUNCIATION_TOGGLE_KEY);
+    if (v === null) return true;
+    return v === "1" || v === "true";
+  } catch {
+    return true;
+  }
+}
+
+export function writePronunciationEnabled(on: boolean) {
+  try {
+    localStorage.setItem(PRONUNCIATION_TOGGLE_KEY, on ? "1" : "0");
   } catch {
     // ignore
   }
