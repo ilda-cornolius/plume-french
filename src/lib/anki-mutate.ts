@@ -60,9 +60,145 @@ type ModelMap = Record<
 
 const DEFAULT_DECK = "Plume · Appris";
 
+/** Empty-ish protobuf blobs copied from Anki schema-18 Default deck. */
+const SCHEMA18_DECK_COMMON = Buffer.from("08011001", "hex");
+const SCHEMA18_DECK_KIND = Buffer.from("0a020801", "hex");
+
+function tableExists(db: Database, name: string): boolean {
+  const rows = db.exec(
+    `SELECT 1 FROM sqlite_master WHERE type='table' AND name='${name.replace(/'/g, "''")}' LIMIT 1`
+  );
+  return Boolean(rows[0]?.values?.length);
+}
+
+function collectionVersion(db: Database): number {
+  const rows = db.exec("SELECT ver FROM col LIMIT 1");
+  return Number(rows[0]?.values?.[0]?.[0] ?? 11);
+}
+
+function resolveModelSchema11(db: Database): { mid: number; fieldCount: number } {
+  const col = db.exec("SELECT models FROM col LIMIT 1");
+  const modelsJson = String(col[0]?.values?.[0]?.[0] ?? "{}");
+  const models = (modelsJson.trim() ? JSON.parse(modelsJson) : {}) as ModelMap;
+  let model = Object.values(models).find(
+    (m) =>
+      /basic/i.test(String(m.name || "")) &&
+      Array.isArray(m.flds) &&
+      (m.flds?.length || 0) >= 2
+  );
+  if (!model) {
+    model = Object.values(models).find(
+      (m) => Array.isArray(m.flds) && (m.flds?.length || 0) >= 2
+    );
+  }
+  if (!model) {
+    throw new Error("No suitable note type (need a model with ≥2 fields)");
+  }
+  return { mid: Number(model.id), fieldCount: model.flds?.length || 2 };
+}
+
+function resolveModelSchema18(db: Database): { mid: number; fieldCount: number } {
+  if (!tableExists(db, "notetypes")) {
+    throw new Error("Schema 18 collection missing notetypes table");
+  }
+  const nts = db.exec("SELECT id, name FROM notetypes");
+  if (!nts[0]?.values?.length) {
+    throw new Error("No note types in collection");
+  }
+  let mid: number | null = null;
+  for (const row of nts[0].values) {
+    const name = String(row[1] || "");
+    if (/basic/i.test(name) && !/reverse|optional|type/i.test(name)) {
+      mid = Number(row[0]);
+      break;
+    }
+  }
+  if (mid == null) {
+    // any notetype with ≥2 fields
+    for (const row of nts[0].values) {
+      const id = Number(row[0]);
+      const flds = db.exec(`SELECT count(*) FROM fields WHERE ntid = ${id}`);
+      const n = Number(flds[0]?.values?.[0]?.[0] ?? 0);
+      if (n >= 2) {
+        mid = id;
+        break;
+      }
+    }
+  }
+  if (mid == null) {
+    throw new Error("No suitable note type (need a model with ≥2 fields)");
+  }
+  const flds = db.exec(`SELECT count(*) FROM fields WHERE ntid = ${mid}`);
+  const fieldCount = Math.max(2, Number(flds[0]?.values?.[0]?.[0] ?? 2));
+  return { mid, fieldCount };
+}
+
+function resolveOrCreateDeckSchema11(
+  db: Database,
+  deckName: string
+): number {
+  const col = db.exec("SELECT decks FROM col LIMIT 1");
+  const decksJson = String(col[0]?.values?.[0]?.[0] ?? "{}");
+  const decks = (decksJson.trim() ? JSON.parse(decksJson) : {}) as DeckMap;
+  const deckEntry = Object.values(decks).find(
+    (d) => String(d.name).toLowerCase() === deckName.toLowerCase()
+  );
+  let deckId: number;
+  if (!deckEntry) {
+    deckId = Date.now();
+    decks[String(deckId)] = {
+      id: deckId,
+      name: deckName,
+      desc: "Cards learned in Plume writing practice",
+      conf: 1,
+      dyn: 0,
+      collapsed: false,
+      browserCollapsed: false,
+      newToday: [0, 0],
+      revToday: [0, 0],
+      lrnToday: [0, 0],
+      timeToday: [0, 0],
+      extendNew: 10,
+      extendRev: 50,
+      usn: -1,
+      mod: nowSec(),
+    };
+  } else {
+    deckId = Number(deckEntry.id);
+  }
+  const t = nowSec();
+  db.run(`UPDATE col SET decks = ?, mod = ?, usn = -1`, [
+    JSON.stringify(decks),
+    t,
+  ]);
+  return deckId;
+}
+
+function resolveOrCreateDeckSchema18(db: Database, deckName: string): number {
+  const existing = db.exec(
+    `SELECT id FROM decks WHERE name = '${deckName.replace(/'/g, "''")}' LIMIT 1`
+  );
+  if (existing[0]?.values?.[0]?.[0] != null) {
+    return Number(existing[0].values[0][0]);
+  }
+  const deckId = Date.now();
+  const t = nowSec();
+  db.run(
+    `INSERT INTO decks (id, name, mtime_secs, usn, common, kind) VALUES (?, ?, ?, -1, ?, ?)`,
+    [
+      deckId,
+      deckName,
+      t,
+      SCHEMA18_DECK_COMMON,
+      SCHEMA18_DECK_KIND,
+    ]
+  );
+  return deckId;
+}
+
 /**
  * Insert Basic-style notes/cards into an Anki collection database.
- * Returns the modified DB bytes and how many notes were added.
+ * Supports schema 11 (JSON in col) and schema 18+ (decks/notetypes tables).
  */
 export async function addCardsToCollection(
   dbBytes: Uint8Array,
@@ -82,65 +218,21 @@ export async function addCardsToCollection(
   const db: Database = new SQL.Database(dbBytes);
 
   try {
-    const col = db.exec(
-      "SELECT id, crt, mod, scm, ver, dty, usn, ls, conf, models, decks, dconf, tags FROM col LIMIT 1"
-    );
+    const col = db.exec("SELECT id FROM col LIMIT 1");
     if (!col[0]?.values?.[0]) {
       throw new Error("Invalid Anki collection: missing col row");
     }
 
-    const row = col[0].values[0];
-    const modelsJson = String(row[9] ?? "{}");
-    const decksJson = String(row[10] ?? "{}");
-    const models = JSON.parse(modelsJson) as ModelMap;
-    const decks = JSON.parse(decksJson) as DeckMap;
+    const ver = collectionVersion(db);
+    const schema18 = ver >= 18 || tableExists(db, "decks");
 
-    // Prefer a Basic-like model with ≥2 fields
-    let model = Object.values(models).find(
-      (m) =>
-        /basic/i.test(String(m.name || "")) &&
-        Array.isArray(m.flds) &&
-        (m.flds?.length || 0) >= 2
-    );
-    if (!model) {
-      model = Object.values(models).find(
-        (m) => Array.isArray(m.flds) && (m.flds?.length || 0) >= 2
-      );
-    }
-    if (!model) {
-      throw new Error("No suitable note type (need a model with ≥2 fields)");
-    }
+    const { mid, fieldCount } = schema18
+      ? resolveModelSchema18(db)
+      : resolveModelSchema11(db);
 
-    const mid = Number(model.id);
-    const fieldCount = model.flds?.length || 2;
-
-    // Find or create deck
-    let deckEntry = Object.values(decks).find(
-      (d) => String(d.name).toLowerCase() === deckName.toLowerCase()
-    );
-    let deckId: number;
-    if (!deckEntry) {
-      deckId = Date.now();
-      decks[String(deckId)] = {
-        id: deckId,
-        name: deckName,
-        desc: "Cards learned in Plume writing practice",
-        conf: 1,
-        dyn: 0,
-        collapsed: false,
-        browserCollapsed: false,
-        newToday: [0, 0],
-        revToday: [0, 0],
-        lrnToday: [0, 0],
-        timeToday: [0, 0],
-        extendNew: 10,
-        extendRev: 50,
-        usn: -1,
-        mod: nowSec(),
-      };
-    } else {
-      deckId = Number(deckEntry.id);
-    }
+    const deckId = schema18
+      ? resolveOrCreateDeckSchema18(db, deckName)
+      : resolveOrCreateDeckSchema11(db, deckName);
 
     const t = nowSec();
     let added = 0;
@@ -155,7 +247,7 @@ export async function addCardsToCollection(
       fields[1] = back;
       const flds = fields.join("\x1f");
       const sfld = front;
-      const nid = Date.now() + added; // unique-ish note id
+      const nid = Date.now() + added;
       const tags = ["plume", "appris", ...(card.tags || [])]
         .map((x) => x.replace(/\s+/g, "_"))
         .join(" ");
@@ -176,7 +268,6 @@ export async function addCardsToCollection(
         ]
       );
 
-      // One card per template ord 0 (Basic front→back)
       const cid = nid + 1;
       db.run(
         `INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data)
@@ -186,14 +277,7 @@ export async function addCardsToCollection(
       added += 1;
     }
 
-    // Bump collection mod / schema markers so AnkiWeb accepts the upload
-    const newDecks = JSON.stringify(decks);
-    db.run(`UPDATE col SET decks = ?, mod = ?, scm = ?, usn = -1, ls = ?`, [
-      newDecks,
-      t,
-      t,
-      t,
-    ]);
+    db.run(`UPDATE col SET mod = ?, scm = ?, usn = -1, ls = ?`, [t, t, t]);
 
     const exported = db.export();
     return {

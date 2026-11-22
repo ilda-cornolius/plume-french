@@ -43,6 +43,50 @@ function stripHtml(s: string): string {
     .trim();
 }
 
+/** Schema 18 stores deck path segments joined by \x1f; Anki UI uses :: */
+function normalizeDeckName(name: string): string {
+  return name.replace(/\x1f/g, "::");
+}
+
+function tableExists(db: Database, name: string): boolean {
+  const rows = db.exec(
+    `SELECT 1 FROM sqlite_master WHERE type='table' AND name='${name.replace(/'/g, "''")}' LIMIT 1`
+  );
+  return Boolean(rows[0]?.values?.length);
+}
+
+function loadDecksFromColJson(db: Database): Map<number, string> {
+  const idToName = new Map<number, string>();
+  const colRow = db.exec("SELECT decks FROM col LIMIT 1");
+  const decksJson =
+    colRow[0]?.values?.[0]?.[0] != null
+      ? String(colRow[0].values[0][0])
+      : "";
+  if (!decksJson.trim()) return idToName;
+  let deckMap: DeckMap;
+  try {
+    deckMap = JSON.parse(decksJson) as DeckMap;
+  } catch {
+    return idToName;
+  }
+  for (const d of Object.values(deckMap)) {
+    if (!d || d.name == null) continue;
+    idToName.set(Number(d.id), normalizeDeckName(String(d.name)));
+  }
+  return idToName;
+}
+
+function loadDecksFromTable(db: Database): Map<number, string> {
+  const idToName = new Map<number, string>();
+  if (!tableExists(db, "decks")) return idToName;
+  const rows = db.exec("SELECT id, name FROM decks");
+  if (!rows[0]) return idToName;
+  for (const row of rows[0].values) {
+    idToName.set(Number(row[0]), normalizeDeckName(String(row[1] ?? "")));
+  }
+  return idToName;
+}
+
 export async function parseAnkiCollection(
   dbBytes: Uint8Array
 ): Promise<AnkiCollectionData> {
@@ -50,12 +94,12 @@ export async function parseAnkiCollection(
   const db: Database = new SQL.Database(dbBytes);
 
   try {
-    const colRow = db.exec("SELECT decks FROM col LIMIT 1");
-    const decksJson =
-      colRow[0]?.values?.[0]?.[0] != null
-        ? String(colRow[0].values[0][0])
-        : "{}";
-    const deckMap = JSON.parse(decksJson) as DeckMap;
+    // Schema 11: deck JSON in col.decks. Schema 18+: rows in decks table
+    // (col.decks is often empty — JSON.parse("") caused "Unexpected end of JSON input").
+    let idToName = loadDecksFromColJson(db);
+    if (idToName.size === 0) {
+      idToName = loadDecksFromTable(db);
+    }
 
     const cardCounts = new Map<number, number>();
     const cardDeck = new Map<number, number>(); // note id -> did (first card)
@@ -70,23 +114,15 @@ export async function parseAnkiCollection(
       }
     }
 
-    const decks: AnkiDeckSummary[] = Object.values(deckMap)
-      .filter((d) => d && d.name && !String(d.name).startsWith("std::"))
-      .map((d) => {
-        const idNum = Number(d.id);
-        return {
-          id: String(d.id),
-          name: String(d.name),
-          cardCount: cardCounts.get(idNum) || 0,
-        };
-      })
+    const decks: AnkiDeckSummary[] = [...idToName.entries()]
+      .filter(([, name]) => name && !name.startsWith("std::"))
+      .map(([id, name]) => ({
+        id: String(id),
+        name,
+        cardCount: cardCounts.get(id) || 0,
+      }))
       .filter((d) => d.name !== "Default" || d.cardCount > 0)
       .sort((a, b) => a.name.localeCompare(b.name));
-
-    const idToName = new Map<number, string>();
-    for (const d of Object.values(deckMap)) {
-      idToName.set(Number(d.id), String(d.name));
-    }
 
     const notes: AnkiNoteSummary[] = [];
     const noteRows = db.exec("SELECT id, flds, tags FROM notes LIMIT 500");
