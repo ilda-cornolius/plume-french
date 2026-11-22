@@ -12,6 +12,7 @@ export function PronunciationToggle({ enabled, onChange, className }: Props) {
     <button
       type="button"
       role="switch"
+      data-testid="pronunciation-toggle"
       aria-checked={enabled}
       aria-label={
         enabled

@@ -12,6 +12,7 @@ export function GlossToggle({ enabled, onChange, className }: Props) {
     <button
       type="button"
       role="switch"
+      data-testid="gloss-toggle"
       aria-checked={enabled}
       aria-label={
         enabled
