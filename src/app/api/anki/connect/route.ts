@@ -23,11 +23,12 @@ export async function POST(req: Request) {
 
     const { username, password } = parsed.data;
     // Intentionally never log username/password or auth payloads
-    const auth = await ankiLogin(username, password);
+    let auth = await ankiLogin(username, password);
 
-    // Verify the key works
+    // Resolve regional host (303/hostNum) and persist that endpoint
     try {
-      await ankiMeta(auth);
+      const { endpoint } = await ankiMeta(auth);
+      auth = { ...auth, endpoint };
     } catch {
       // meta can fail on empty collections; hostKey success is enough to connect
     }
@@ -43,13 +44,13 @@ export async function POST(req: Request) {
       ok: true,
       username,
       connectedAt: session.connectedAt,
+      endpoint: session.endpoint,
     });
     res.cookies.set(COOKIE_NAME, token, sessionCookieOptions());
     return res;
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Could not connect to AnkiWeb";
-    // Sanitize — never echo credentials
     const safe = message.replace(/password|passwd|hkey/gi, "[redacted]");
     return NextResponse.json({ error: safe }, { status: 401 });
   }

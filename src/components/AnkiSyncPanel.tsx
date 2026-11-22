@@ -87,10 +87,10 @@ export function AnkiSyncPanel() {
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
           AnkiWeb
         </p>
-        <h1 className="brand-display text-4xl font-extrabold text-paper sm:text-5xl">
+        <h1 className="brand-display text-5xl font-extrabold text-paper sm:text-6xl">
           Your decks, nearby.
         </h1>
-        <p className="mt-3 text-base text-mist sm:text-lg">
+        <p className="mt-3 text-lg text-mist sm:text-xl">
           Sign in with AnkiWeb to download deck and note info. Credentials stay
           in an encrypted httpOnly cookie — passwords are never logged.
         </p>

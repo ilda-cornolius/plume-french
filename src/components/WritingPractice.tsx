@@ -156,12 +156,12 @@ export function WritingPractice() {
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
           Plume
         </p>
-        <h1 className="brand-display text-4xl font-extrabold leading-[1.05] text-paper sm:text-6xl">
+        <h1 className="brand-display text-5xl font-extrabold leading-[1.05] text-paper sm:text-7xl">
           Messy Franglais.
           <br />
           <span className="text-mist">Clear French.</span>
         </h1>
-        <p className="mt-4 max-w-lg text-base leading-relaxed text-mist sm:text-lg">
+        <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
           Type mixed French and English however it comes out. Plume infers what
           you meant and returns a proper French sentence with a short
           explanation.
@@ -184,14 +184,14 @@ export function WritingPractice() {
           }}
           placeholder="Écrivez librement… je want to le store"
           rows={5}
-          className="w-full resize-y rounded-xl border border-[var(--line)] bg-[#f4fafb] px-4 py-3 text-lg leading-relaxed text-black outline-none transition placeholder:text-black/40 focus:border-citrus/50 focus:ring-2 focus:ring-citrus/20"
+          className="w-full resize-y rounded-xl border border-[var(--line)] bg-[#f4fafb] px-4 py-4 text-xl leading-relaxed text-black outline-none transition placeholder:text-black/40 focus:border-citrus/50 focus:ring-2 focus:ring-citrus/20 sm:text-2xl"
         />
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={() => runRewrite()}
             disabled={pending || !text.trim()}
-            className="rounded-full bg-citrus px-6 py-2.5 text-sm font-semibold text-ink transition hover:bg-citrus-dim disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-full bg-citrus px-7 py-3 text-base font-semibold text-ink transition hover:bg-citrus-dim disabled:cursor-not-allowed disabled:opacity-40"
           >
             {pending ? "Rewriting…" : "Rewrite in French"}
           </button>
@@ -249,7 +249,7 @@ export function WritingPractice() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mist">
               French
             </p>
-            <p className="brand-display mt-2 text-2xl font-bold text-citrus sm:text-3xl">
+            <p className="brand-display mt-2 text-3xl font-bold text-citrus sm:text-4xl">
               {result.corrected}
             </p>
             {result.corrected.trim() !== result.original.trim() && (

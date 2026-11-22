@@ -6,6 +6,8 @@ import { DEMO_COLLECTION } from "@/lib/demo-decks";
 import {
   COOKIE_NAME,
   decryptSession,
+  encryptSession,
+  sessionCookieOptions,
   type StoredAnkiSession,
 } from "@/lib/session";
 
@@ -28,19 +30,32 @@ export async function GET() {
   }
 
   try {
-    const bytes = await ankiDownloadCollection({
+    const { bytes, endpoint } = await ankiDownloadCollection({
       hkey: session.hkey,
       endpoint: session.endpoint,
     });
     const collection = await parseAnkiCollection(bytes);
-    return NextResponse.json({
+
+    const res = NextResponse.json({
       connected: true,
       demo: false,
       username: session.username,
       connectedAt: session.connectedAt,
       collection,
       message: "Synced from AnkiWeb.",
+      endpoint,
     });
+
+    // Persist regional endpoint discovered via 303/meta hostNum
+    if (endpoint && endpoint !== session.endpoint) {
+      const updated: StoredAnkiSession = { ...session, endpoint };
+      res.cookies.set(
+        COOKIE_NAME,
+        encryptSession(updated),
+        sessionCookieOptions()
+      );
+    }
+    return res;
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "AnkiWeb sync failed";
@@ -58,6 +73,5 @@ export async function GET() {
 }
 
 export async function POST() {
-  // Same as GET refresh
   return GET();
 }

@@ -6,6 +6,8 @@ import { addCardsToCollection, type LearnableCard } from "@/lib/anki-mutate";
 import {
   COOKIE_NAME,
   decryptSession,
+  encryptSession,
+  sessionCookieOptions,
   type StoredAnkiSession,
 } from "@/lib/session";
 
@@ -44,8 +46,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid cards payload" }, { status: 400 });
     }
 
-    const auth = { hkey: session.hkey, endpoint: session.endpoint };
-    const downloaded = await ankiDownloadCollection(auth);
+    let auth = { hkey: session.hkey, endpoint: session.endpoint };
+    const { bytes: downloaded, endpoint } = await ankiDownloadCollection(auth);
+    auth = { ...auth, endpoint };
+
     const { bytes, added, deckName, deckId } = await addCardsToCollection(
       downloaded,
       parsed.data.cards as LearnableCard[],
@@ -56,15 +60,28 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, added: 0, message: "No new cards to add." });
     }
 
-    await ankiUploadCollection(auth, bytes);
+    const uploadedEndpoint = await ankiUploadCollection(auth, bytes);
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       added,
       deckName,
       deckId,
       message: `Uploaded ${added} card(s) to « ${deckName} » on AnkiWeb.`,
     });
+
+    if (uploadedEndpoint !== session.endpoint) {
+      const updated: StoredAnkiSession = {
+        ...session,
+        endpoint: uploadedEndpoint,
+      };
+      res.cookies.set(
+        COOKIE_NAME,
+        encryptSession(updated),
+        sessionCookieOptions()
+      );
+    }
+    return res;
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "AnkiWeb upload failed";

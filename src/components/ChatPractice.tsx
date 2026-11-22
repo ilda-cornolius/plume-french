@@ -80,10 +80,10 @@ export function ChatPractice() {
         <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
           Conversation
         </p>
-        <h1 className="brand-display text-4xl font-extrabold text-paper sm:text-5xl">
+        <h1 className="brand-display text-5xl font-extrabold text-paper sm:text-6xl">
           Talk with Plume.
         </h1>
-        <p className="mt-3 text-base text-mist sm:text-lg">
+        <p className="mt-3 text-lg text-mist sm:text-xl">
           Practice spoken-style French in a chat. Plume replies gently and
           nudges you forward.
         </p>
@@ -100,7 +100,7 @@ export function ChatPractice() {
               className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed sm:text-base ${
+                className={`max-w-[85%] rounded-2xl px-4 py-3 text-base leading-relaxed sm:text-lg ${
                   m.role === "user"
                     ? "bg-citrus text-ink"
                     : "border border-[var(--line)] bg-ink/50 text-paper"
@@ -127,12 +127,12 @@ export function ChatPractice() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Écris en français (ou Franglais)…"
-            className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[#f4fafb] px-4 py-2.5 text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
+            className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[#f4fafb] px-5 py-3.5 text-lg text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
           />
           <button
             type="submit"
             disabled={pending || !input.trim()}
-            className="rounded-full bg-citrus px-5 py-2.5 text-sm font-semibold text-ink hover:bg-citrus-dim disabled:opacity-40"
+            className="rounded-full bg-citrus px-6 py-3.5 text-base font-semibold text-ink hover:bg-citrus-dim disabled:opacity-40"
           >
             Envoyer
           </button>
