@@ -39,11 +39,12 @@ Until these are set, the nav shows “Google login off”; the rest of the app s
 
 ## Features
 
-- **Écrire** — Franglais → French (Gemini); XP / levels / streaks; **Save to AnkiWeb**
-- **Parler** — conversation chat (Gemini)
+- **Écrire** — Franglais → French (Gemini); XP / levels / streaks; **Save to AnkiWeb**; past sessions restored
+- **Parler** — conversation chat (Gemini) with **server-side history** (Postgres on publish / PGlite locally)
+- **Hover → Anki** — hover (or tap) a word in chat/writing → save to `Plume · Appris`
 - **Anki** — AnkiWeb connect / refresh / upload to `Plume · Appris`
 - **PWA** — installable on Android Chrome (Add to Home Screen) via `manifest.webmanifest` + service worker
-- **Google login** — Auth.js (NextAuth v5)
+- **Google login** — Auth.js (NextAuth v5); chats keyed by Cursor identity → Google → cookie
 
 ## AnkiWeb sync
 
@@ -70,6 +71,11 @@ On Android Chrome (HTTPS or localhost):
 
 This app is deploy-ready (`npm run build`). Cursor `publish-app` must run from a **repository-linked** cloud agent on `ilda-cornolius/plume-french`. Bind secrets there: `GEMINI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, `AUTH_URL`, `PLUME_SESSION_SECRET`.
 
+## Conversations DB
+
+- `cursor-app.json` + `migrations/001_conversations.sql` → hosted Postgres (`DATABASE_URL`)
+- Local/dev: in-memory PGlite (no setup). Build runs `node scripts/migrate.mjs` when `DATABASE_URL` is set.
+
 ## Stack
 
-Next.js 16 · Auth.js · Gemini · AnkiWeb sync · sql.js · PWA
+Next.js 16 · Auth.js · Gemini · AnkiWeb sync · Postgres/PGlite · sql.js · PWA
