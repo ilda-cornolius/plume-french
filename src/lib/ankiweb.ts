@@ -163,3 +163,42 @@ export async function ankiMeta(auth: AnkiAuth): Promise<Record<string, unknown>>
   );
   return JSON.parse(body.toString("utf8")) as Record<string, unknown>;
 }
+
+/**
+ * Full-upload a modified collection.anki2 to AnkiWeb.
+ * Caller must download first, mutate locally, then upload — replaces server DB.
+ */
+export async function ankiUploadCollection(
+  auth: AnkiAuth,
+  dbBytes: Uint8Array
+): Promise<void> {
+  const skey = sessionKey();
+  const endpoint = auth.endpoint.replace(/\/?$/, "/");
+  const url = `${endpoint}sync/upload`;
+  const compressed = zstdCompressSync(Buffer.from(dbBytes));
+  const hdr = encodeAnkiSyncHeader(auth.hkey, skey);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "anki-sync": hdr,
+      "Content-Type": "application/octet-stream",
+    },
+    body: compressed,
+    redirect: "manual",
+  });
+
+  if (res.status === 308 || res.status === 307) {
+    const loc = res.headers.get("location");
+    if (!loc) throw new Error("AnkiWeb upload redirect without location");
+    const next = loc.endsWith("/") ? loc : `${loc}/`;
+    return ankiUploadCollection({ ...auth, endpoint: next }, dbBytes);
+  }
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(
+      `AnkiWeb upload failed (${res.status})${errText ? `: ${errText.slice(0, 160)}` : ""}`
+    );
+  }
+}

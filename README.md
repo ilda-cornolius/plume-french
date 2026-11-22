@@ -1,60 +1,42 @@
 # Plume
 
-French writing practice powered by AI intent rewrite, plus AnkiWeb deck sync.
+French writing practice with Gemini AI rewrite, conversation chat, levels, and AnkiWeb sync.
 
 ## Run locally
 
 ```bash
 cd plume
+cp .env.example .env.local   # then add GEMINI_API_KEY
 npm install
 npm run dev
 ```
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
-### Environment
+### Free Gemini API key (recommended)
 
-| Variable | Purpose |
-| --- | --- |
-| `OPENAI_API_KEY` | Enables full model rewrites for messy mixed French/English (recommended) |
-| `OPENAI_BASE_URL` | Optional OpenAI-compatible base URL (default `https://api.openai.com/v1`) |
-| `OPENAI_MODEL` | Optional model id (default `gpt-4o-mini`) |
-| `PLUME_SESSION_SECRET` | AES key material for encrypting the AnkiWeb session cookie (set a strong secret in production) |
-| `LANGUAGETOOL_API_URL` | Optional; reserved for grammar polish helpers |
+1. Open [Google AI Studio](https://aistudio.google.com/apikey)
+2. Sign in with a Google account
+3. Click **Create API key**
+4. Put the key in `.env.local` as `GEMINI_API_KEY=…` (never commit `.env.local`)
+5. Restart `npm run dev`
 
-Without `OPENAI_API_KEY`, Plume uses a **local AI path**: Franglais phrase templates + lexicon rewrite that still handles examples like `je want to le store` → `Je veux aller au magasin.` The UI labels which engine ran.
+Optional: `GEMINI_MODEL` (default `gemini-flash-lite-latest`).
+
+Fallbacks: `GROQ_API_KEY`, `OPENAI_API_KEY`. Without any key, Plume uses a local Franglais path for rewrite and scripted chat lines.
+
+Also: `PLUME_SESSION_SECRET` for encrypting the AnkiWeb session cookie in production.
 
 ## Features
 
-### Writing practice (primary)
+- **Écrire** — mixed French/English → proper French + explanations; XP / levels / streaks
+- **Parler** — conversation practice chat with Gemini
+- **Anki** — connect AnkiWeb, browse decks; **Save to AnkiWeb** from a correction uploads notes to deck `Plume · Appris`
 
-- Accepts messy mixed French/English, not only already-French text.
-- Infers intent, returns a proper French sentence, and short explanations (vocabulary, gender, grammar).
-- Model API when `OPENAI_API_KEY` is set; otherwise local Franglais heuristics.
+### AnkiWeb notes
 
-### AnkiWeb sync (secondary)
-
-Uses the **Anki sync protocol** (not AnkiConnect):
-
-1. `POST …/sync/hostKey` → host key (`hkey`)
-2. `POST …/sync/download` → full `collection.anki2`
-3. Parse decks/notes with sql.js
-
-**What works**
-
-- Connect / disconnect / refresh
-- Encrypted httpOnly cookie stores `hkey` + endpoint + username (password not kept after login)
-- Passwords are never logged
-- Deck list + note preview after a successful download
-- Labeled **demo data** when not connected or live sync fails
-
-**Limits & caveats**
-
-- AnkiWeb has no public REST API; protocol v11 against `sync.ankiweb.net` may change.
-- Full download can be large; notes capped at 500 in the UI.
-- Media is not synced.
-- HTTP 308 regional redirects are followed automatically.
+Uses the Anki sync protocol (`hostKey` → download → mutate → upload), not AnkiConnect. Passwords are never logged; only an encrypted httpOnly host-key cookie is kept. Demo decks appear when disconnected. Protocol may change; media is not synced; uploads replace the server collection after a local merge — sync from Anki desktop first if you have unsynced local changes.
 
 ## Stack
 
-Next.js (App Router) · TypeScript · Tailwind · OpenAI-compatible chat API · AnkiWeb sync · sql.js
+Next.js · TypeScript · Tailwind · Gemini / Groq / OpenAI · AnkiWeb sync · sql.js

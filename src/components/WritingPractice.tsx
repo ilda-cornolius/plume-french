@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { awardPracticeXp } from "@/lib/progress";
+import { notifyProgressUpdated } from "@/components/LevelBadge";
 
 type Issue = {
   type: string;
@@ -14,7 +16,7 @@ type RewriteResult = {
   corrected: string;
   intent: string;
   issues: Issue[];
-  source: "openai" | "local-ai";
+  source: "gemini" | "groq" | "openai" | "local-ai";
   model?: string;
   aiConfigured?: boolean;
 };
@@ -37,17 +39,37 @@ const typeLabel: Record<string, string> = {
   other: "Note",
 };
 
+function engineLabel(result: RewriteResult): string {
+  if (result.source === "local-ai") {
+    return "local AI (Franglais) — set GEMINI_API_KEY for Gemini rewrites";
+  }
+  const name =
+    result.source === "gemini"
+      ? "Gemini"
+      : result.source === "groq"
+        ? "Groq"
+        : "OpenAI";
+  return `${name}${result.model ? ` (${result.model})` : ""}`;
+}
+
 export function WritingPractice() {
   const [text, setText] = useState("");
   const [result, setResult] = useState<RewriteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiReady, setAiReady] = useState<boolean | null>(null);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
+  const [xpNote, setXpNote] = useState<string | null>(null);
+  const [ankiMsg, setAnkiMsg] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [savingAnki, setSavingAnki] = useState(false);
 
   useEffect(() => {
     fetch("/api/correct")
       .then((r) => r.json())
-      .then((d) => setAiReady(Boolean(d.aiConfigured)))
+      .then((d) => {
+        setAiReady(Boolean(d.aiConfigured));
+        setActiveProvider(d.active || null);
+      })
       .catch(() => setAiReady(false));
   }, []);
 
@@ -55,6 +77,7 @@ export function WritingPractice() {
     const payload = (value ?? text).trim();
     if (!payload) return;
     setError(null);
+    setAnkiMsg(null);
     startTransition(async () => {
       try {
         const res = await fetch("/api/correct", {
@@ -68,10 +91,63 @@ export function WritingPractice() {
         if (typeof data.aiConfigured === "boolean") {
           setAiReady(data.aiConfigured);
         }
+        const award = awardPracticeXp({
+          issueCount: data.issues?.length || 0,
+          hadChange: data.corrected.trim() !== data.original.trim(),
+        });
+        notifyProgressUpdated();
+        setXpNote(
+          award.leveledUp
+            ? `+${award.gained} XP · Level up! Now Nv ${award.state.level}`
+            : `+${award.gained} XP`
+        );
       } catch {
         setError("Could not rewrite right now. Try again in a moment.");
       }
     });
+  }
+
+  async function saveToAnki() {
+    if (!result) return;
+    setSavingAnki(true);
+    setAnkiMsg(null);
+    try {
+      const cards = [
+        {
+          front: result.corrected,
+          back: result.intent || "Phrase apprise dans Plume",
+          tags: ["plume", "phrase"],
+        },
+        ...result.issues
+          .filter((i) =>
+            ["vocabulary", "gender", "spelling"].includes(i.type)
+          )
+          .map((i) => ({
+            front: i.suggestion || i.original,
+            back: i.explanation,
+            tags: ["plume", i.type],
+          })),
+      ];
+      const res = await fetch("/api/anki/add-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cards, deckName: "Plume · Appris" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAnkiMsg(
+          data.needsConnect
+            ? "Connect AnkiWeb on the Anki page first, then save again."
+            : data.error || "Upload failed"
+        );
+        return;
+      }
+      setAnkiMsg(data.message || `Saved ${data.added} card(s) to AnkiWeb.`);
+    } catch {
+      setAnkiMsg("Could not reach Anki upload endpoint.");
+    } finally {
+      setSavingAnki(false);
+    }
   }
 
   return (
@@ -128,8 +204,13 @@ export function WritingPractice() {
                   : "bg-ink-3 text-mist"
               }`}
             >
-              {aiReady ? "Model API on" : "Local AI path"}
+              {aiReady
+                ? `AI on${activeProvider ? ` · ${activeProvider}` : ""}`
+                : "Local AI path"}
             </span>
+          )}
+          {xpNote && (
+            <span className="text-xs font-medium text-ember">{xpNote}</span>
           )}
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
@@ -179,6 +260,21 @@ export function WritingPractice() {
                 </span>
               </p>
             )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={saveToAnki}
+                disabled={savingAnki}
+                className="rounded-full border border-citrus/40 bg-citrus/10 px-4 py-2 text-sm font-semibold text-citrus hover:bg-citrus/20 disabled:opacity-40"
+              >
+                {savingAnki ? "Uploading…" : "Save to AnkiWeb"}
+              </button>
+            </div>
+            {ankiMsg && (
+              <p className="mt-3 text-sm text-mist" role="status">
+                {ankiMsg}
+              </p>
+            )}
           </div>
 
           {result.issues.length > 0 && (
@@ -208,12 +304,7 @@ export function WritingPractice() {
             </ul>
           )}
 
-          <p className="text-[11px] text-mist/45">
-            Engine:{" "}
-            {result.source === "openai"
-              ? `OpenAI${result.model ? ` (${result.model})` : ""}`
-              : "local AI (Franglais heuristics) — set OPENAI_API_KEY for full model rewrites"}
-          </p>
+          <p className="text-[11px] text-mist/45">Engine: {engineLabel(result)}</p>
         </div>
       )}
     </section>

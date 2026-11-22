@@ -1,8 +1,9 @@
 /**
  * AI-first French rewrite for messy / mixed French–English practice input.
- * Prefers OpenAI-compatible APIs when OPENAI_API_KEY is set; otherwise a
- * solid local Franglais → French path (mockable / offline).
+ * Prefers Gemini (GEMINI_API_KEY), then Groq/OpenAI; otherwise local Franglais.
  */
+
+import { chatCompletion, getProviderStatus } from "@/lib/llm";
 
 export type RewriteIssue = {
   type: "intent" | "grammar" | "gender" | "spelling" | "vocabulary" | "style" | "other";
@@ -16,11 +17,9 @@ export type RewriteResult = {
   corrected: string;
   intent: string;
   issues: RewriteIssue[];
-  source: "openai" | "local-ai";
+  source: "gemini" | "groq" | "openai" | "local-ai";
   model?: string;
 };
-
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 const SYSTEM_PROMPT = `You are Plume, a French writing coach for learners.
 The user may write messy mixed French and English (Franglais), typos, or incomplete sentences.
@@ -95,56 +94,27 @@ function normalizeResult(
   return { original, corrected, intent, issues, source, model };
 }
 
-async function openAiRewrite(text: string): Promise<RewriteResult | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
-
-  const base =
-    (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
-  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-  const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    {
-      role: "user",
-      content: `Rewrite into proper French and explain:\n\n${text}`,
-    },
-  ];
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 25_000);
-
-  try {
-    const res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
+async function modelRewrite(text: string): Promise<RewriteResult | null> {
+  const llm = await chatCompletion(
+    [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: `Rewrite into proper French and explain:\n\n${text}`,
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-        messages,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      // Do not log body (may echo prompts); fall through to local
-      return null;
-    }
-
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    return normalizeResult(text, extractJson(content), "openai", model);
+    ],
+    { json: true, temperature: 0.3 }
+  );
+  if (!llm) return null;
+  try {
+    return normalizeResult(
+      text,
+      extractJson(llm.content),
+      llm.provider,
+      llm.model
+    );
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -503,7 +473,7 @@ function localAiRewrite(text: string): RewriteResult {
       original,
       suggestion: corrected,
       explanation:
-        "Inferred intent and rewrote into a clearer French sentence (local AI path — add OPENAI_API_KEY for full model quality).",
+        "Inferred intent and rewrote into a clearer French sentence (local AI path — set GEMINI_API_KEY for full model quality).",
     });
   } else if (issues.length === 0) {
     issues.push({
@@ -511,7 +481,7 @@ function localAiRewrite(text: string): RewriteResult {
       original,
       suggestion: corrected,
       explanation:
-        "No strong Franglais cues found. Add OPENAI_API_KEY for richer AI rewrites of free-form mixed input.",
+        "No strong Franglais cues found. Set GEMINI_API_KEY for richer AI rewrites of free-form mixed input.",
     });
   }
 
@@ -540,11 +510,11 @@ export async function rewriteToFrench(text: string): Promise<RewriteResult> {
     };
   }
 
-  const ai = await openAiRewrite(trimmed);
+  const ai = await modelRewrite(trimmed);
   if (ai) return ai;
   return localAiRewrite(trimmed);
 }
 
 export function aiConfigured(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  return getProviderStatus().configured;
 }
