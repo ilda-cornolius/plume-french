@@ -13,10 +13,23 @@ const bodySchema = z.object({
   context: z.string().max(800).optional(),
 });
 
+/** True if value looks like IPA (/…/ with phonetic symbols), not English respelling. */
+function looksLikeIpa(s: string): boolean {
+  const t = s.trim();
+  if (/^\/.+\/$/.test(t)) return true;
+  return /[əɛɔɑœøʃʒʁɲɥɡɨθð]/.test(t);
+}
+
+function normalizeSay(raw: string): string {
+  const t = String(raw).trim().slice(0, 64);
+  if (!t || looksLikeIpa(t)) return "";
+  return t;
+}
+
 export async function GET() {
   return NextResponse.json({
     ...getProviderStatus(),
-    mode: "fr→en gloss + IPA",
+    mode: "fr→en gloss + English sound-alike",
   });
 }
 
@@ -76,7 +89,7 @@ export async function POST(req: Request) {
         pronunciations,
         source: "local",
         configured: false,
-        message: "Set GEMINI_API_KEY for fuller glosses & IPA.",
+        message: "Set GEMINI_API_KEY for fuller glosses & say-it spellings.",
       });
     }
 
@@ -84,14 +97,15 @@ export async function POST(req: Request) {
       [
         {
           role: "system",
-          content: `You help French learners. For each French word return a short English gloss AND pronunciation.
+          content: `You help English speakers learn French. For each French word return a short English gloss AND how to say it in English letters.
 Return ONLY JSON:
-{"items":{"frenchWord":{"en":"english gloss","ipa":"/ipa/ or readable approx"},...}}
+{"items":{"frenchWord":{"en":"english gloss","say":"zhay-nee-AL"},...}}
 Rules:
 - en: 1–4 English words (base meaning).
-- ipa: Prefer IPA in /slashes/ (French). If unsure, use a readable approx like "boh-zhoor".
+- say: English sound-alike ONLY — hyphenated syllables, CAPS on stress when helpful. Examples: bonjour→bohn-ZHOOR, génial→zhay-nee-AL, je→zhuh, café→ka-FAY.
+- NEVER use IPA or phonetic symbols (no /slashes/, no ə ɛ ɔ ʃ ʒ etc).
 - Keep exact French keys as given.
-- Function words stay short (je→I /ʒə/).`,
+- Function words stay short (je→zhuh, le→luh).`,
         },
         {
           role: "user",
@@ -112,7 +126,10 @@ Rules:
         const slice =
           start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
         const obj = JSON.parse(slice) as {
-          items?: Record<string, { en?: string; ipa?: string }>;
+          items?: Record<
+            string,
+            { en?: string; say?: string; ipa?: string }
+          >;
           glosses?: Record<string, string>;
           pronunciations?: Record<string, string>;
         };
@@ -130,14 +147,16 @@ Rules:
             pickField(obj.glosses, w) ||
             glosses[w] ||
             "…";
-          const ipa =
+          const sayRaw =
+            (item && typeof item.say === "string" && item.say.trim()) ||
             (item && typeof item.ipa === "string" && item.ipa.trim()) ||
             pickField(obj.pronunciations, w) ||
             pronunciations[w] ||
             "";
+          const say = normalizeSay(sayRaw) || pronunciations[w] || "";
 
           glosses[w] = String(en).slice(0, 48);
-          if (ipa) pronunciations[w] = String(ipa).slice(0, 64);
+          if (say) pronunciations[w] = say;
           info[w] = { en: glosses[w], ipa: pronunciations[w] || "" };
         }
 

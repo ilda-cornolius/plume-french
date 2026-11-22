@@ -6,7 +6,7 @@ type Props = {
   className?: string;
 };
 
-/** On/off for IPA pronunciation (FL-13). */
+/** On/off for English sound-alike pronunciation (FL-13/15). */
 export function PronunciationToggle({ enabled, onChange, className }: Props) {
   return (
     <button

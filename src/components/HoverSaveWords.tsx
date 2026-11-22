@@ -9,7 +9,7 @@ type Props = {
   className?: string;
   /** FL-12: show English under each French word */
   glossEnabled?: boolean;
-  /** FL-13: show IPA under words / in hover popup */
+  /** FL-13/15: show English sound-alike under words / in hover popup */
   pronunciationEnabled?: boolean;
   onSaved?: (word: string, message: string) => void;
   onError?: (message: string) => void;
@@ -90,7 +90,7 @@ async function fetchWordInfo(
 }
 
 /**
- * FL-9/12/13: hover save to Anki; EN under FR (toggle); IPA under FR / hover (toggle).
+ * FL-9/12/13/15: hover save; EN under FR; English sound-alike pronunciation.
  */
 export function HoverSaveWords({
   text,
@@ -279,7 +279,7 @@ export function HoverSaveWords({
               </span>
             )}
             {pronunciationEnabled && infoOf(t.value).ipa ? (
-              <span className="max-w-[7.5rem] truncate text-center font-mono text-[9px] font-normal leading-tight text-mist/55">
+              <span className="max-w-[8rem] truncate text-center text-[9px] font-normal italic leading-tight text-mist/55">
                 {infoOf(t.value).ipa}
               </span>
             ) : null}
@@ -311,7 +311,7 @@ export function HoverSaveWords({
               : infoOf(active.word).en || "…"}
           </p>
           {pronunciationEnabled && (active.ipa || infoOf(active.word).ipa) ? (
-            <p className="mb-1.5 text-center font-mono text-[11px] text-citrus/90">
+            <p className="mb-1.5 text-center text-[11px] italic text-citrus/90">
               {active.ipa || infoOf(active.word).ipa}
             </p>
           ) : pronunciationEnabled ? (
