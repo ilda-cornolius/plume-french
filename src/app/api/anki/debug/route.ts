@@ -7,8 +7,12 @@ import {
 } from "@/lib/session";
 import { debugAnkiDownload } from "@/lib/ankiweb";
 
-/** Diagnostic sync probe — never returns secrets/hkey. */
+/** Local-only diagnostic — disabled on the hosted app / production. */
 export async function GET() {
+  if (process.env.NODE_ENV === "production" || process.env.CURSOR_APP_ID) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const jar = await cookies();
   const token = jar.get(COOKIE_NAME)?.value;
   const session = token

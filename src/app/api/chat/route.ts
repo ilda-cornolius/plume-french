@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requirePaidApiCaller } from "@/lib/api-guard";
 import { chatCompletion, getProviderStatus } from "@/lib/llm";
 
 const messageSchema = z.object({
@@ -31,6 +32,9 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const gate = await requirePaidApiCaller(req);
+    if (!gate.ok) return gate.response;
+
     const json = await req.json();
     const parsed = bodySchema.safeParse(json);
     if (!parsed.success) {

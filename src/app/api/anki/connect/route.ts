@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requireJsonContentType } from "@/lib/api-guard";
 import { ankiLogin, ankiMeta } from "@/lib/ankiweb";
 import {
   COOKIE_NAME,
@@ -15,6 +16,9 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const badType = requireJsonContentType(req);
+    if (badType) return badType;
+
     const json = await req.json();
     const parsed = bodySchema.safeParse(json);
     if (!parsed.success) {

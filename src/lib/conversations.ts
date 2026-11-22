@@ -147,11 +147,25 @@ export async function getConversation(
   };
 }
 
+const MAX_CONVERSATIONS_PER_OWNER = 50;
+const MAX_MESSAGES_PER_CONVERSATION = 200;
+
 export async function createConversation(
   ownerId: string,
   kind: ConversationKind,
   title?: string
 ): Promise<ConversationDetail> {
+  const countRows = await sql<{ n: string | number }>(
+    `select count(*)::int as n from conversations where owner_id = $1`,
+    [ownerId]
+  );
+  const n = Number(countRows[0]?.n ?? 0);
+  if (n >= MAX_CONVERSATIONS_PER_OWNER) {
+    throw new Error(
+      `Conversation limit reached (${MAX_CONVERSATIONS_PER_OWNER}). Delete an old one first.`
+    );
+  }
+
   const id = crypto.randomUUID();
   const t = title || (kind === "writing" ? "Writing practice" : "New chat");
   await sql(
@@ -187,13 +201,14 @@ export async function replaceMessages(
   if (!existing[0]) return null;
 
   const kind = existing[0].kind as ConversationKind;
-  const title = titleFromMessages(kind, messages);
+  const capped = messages.slice(-MAX_MESSAGES_PER_CONVERSATION);
+  const title = titleFromMessages(kind, capped);
 
   await sql(`delete from conversation_messages where conversation_id = $1`, [
     conversationId,
   ]);
 
-  for (const m of messages) {
+  for (const m of capped) {
     const mid = crypto.randomUUID();
     await sql(
       `insert into conversation_messages (id, conversation_id, role, content, meta)
@@ -231,7 +246,15 @@ export async function appendMessages(
   );
   if (!existing[0]) return null;
 
-  for (const m of messages) {
+  const countRows = await sql<{ n: string | number }>(
+    `select count(*)::int as n from conversation_messages where conversation_id = $1`,
+    [conversationId]
+  );
+  const existingCount = Number(countRows[0]?.n ?? 0);
+  const room = Math.max(0, MAX_MESSAGES_PER_CONVERSATION - existingCount);
+  const toInsert = messages.slice(0, room);
+
+  for (const m of toInsert) {
     await sql(
       `insert into conversation_messages (id, conversation_id, role, content, meta)
        values ($1, $2, $3, $4, $5)`,

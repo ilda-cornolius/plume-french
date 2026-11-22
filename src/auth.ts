@@ -8,6 +8,9 @@ const googleSecret =
 
 export const googleConfigured = Boolean(googleId && googleSecret);
 
+const authSecret =
+  process.env.AUTH_SECRET?.trim() || process.env.NEXTAUTH_SECRET?.trim() || "";
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: googleConfigured
     ? [
@@ -17,10 +20,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }),
       ]
     : [],
-  secret:
-    process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    "plume-dev-auth-secret-change-me",
+  // Never ship a public fallback secret — bind AUTH_SECRET for hosted/prod.
+  ...(authSecret ? { secret: authSecret } : {}),
   trustHost: true,
   pages: {
     signIn: "/",
