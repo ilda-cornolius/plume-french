@@ -1,4 +1,5 @@
 import zlib from "zlib";
+import { pickLocation, rawRequest } from "@/lib/anki-http";
 
 const zstdCompressSync = (
   zlib as typeof zlib & {
@@ -13,7 +14,7 @@ const zstdDecompressSync = (
 ).zstdDecompressSync;
 
 const SYNC_VER = 11;
-const CLIENT_VER = "anki,25.7.5";
+const CLIENT_VER = "anki,25.07.5";
 const DEFAULT_ENDPOINT = "https://sync.ankiweb.net/";
 
 export type AnkiAuth = {
@@ -64,7 +65,6 @@ export function normalizeEndpoint(location: string, currentEndpoint: string): st
   let loc = location.trim();
   if (!loc) throw new Error("AnkiWeb redirect without location");
 
-  // Relative Location
   if (loc.startsWith("/")) {
     const base = new URL(currentEndpoint);
     loc = `${base.origin}${loc}`;
@@ -73,7 +73,6 @@ export function normalizeEndpoint(location: string, currentEndpoint: string): st
   }
 
   const u = new URL(loc);
-  // Strip /sync/<method> if the redirect pointed at a concrete sync URL
   u.pathname = u.pathname.replace(/\/sync\/[^/]*\/?$/, "/");
   if (!u.pathname.endsWith("/")) u.pathname += "/";
   u.search = "";
@@ -84,14 +83,20 @@ export function normalizeEndpoint(location: string, currentEndpoint: string): st
 export function endpointFromHostNum(hostNum: number | string | undefined): string | null {
   if (hostNum === undefined || hostNum === null || hostNum === "") return null;
   const n = Number(hostNum);
-  if (!Number.isFinite(n) || n <= 0) {
-    // hostNum 0 means default sync.ankiweb.net
-    return DEFAULT_ENDPOINT;
-  }
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_ENDPOINT;
   return `https://sync${n}.ankiweb.net/`;
 }
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+function candidateEndpoints(preferred: string): string[] {
+  const list = [
+    preferred.replace(/\/?$/, "/"),
+    DEFAULT_ENDPOINT,
+    ...Array.from({ length: 12 }, (_, i) => `https://sync${i + 1}.ankiweb.net/`),
+  ];
+  return [...new Set(list)];
+}
 
 async function postSync(
   endpoint: string,
@@ -111,45 +116,105 @@ async function postSync(
   );
   const url = `${base}sync/${method}`;
 
-  const res = await fetch(url, {
+  const res = await rawRequest(url, {
     method: "POST",
     headers: {
       "anki-sync": encodeAnkiSyncHeader(hkey, skey),
       "Content-Type": "application/octet-stream",
       Accept: "*/*",
-      // Some AnkiWeb frontends behave better with a UA
       "User-Agent": CLIENT_VER,
     },
     body: payload,
-    redirect: "manual",
   });
 
   if (REDIRECT_STATUSES.has(res.status)) {
-    const loc = res.headers.get("location") || res.headers.get("Location");
+    const loc = pickLocation(res.headers);
     if (!loc) {
-      throw new Error(`AnkiWeb ${method} redirect ${res.status} without Location`);
+      // No Location — try known regional hosts (common when front door returns bare 303)
+      if (redirectDepth === 0) {
+        for (const ep of candidateEndpoints(base)) {
+          if (ep === base) continue;
+          try {
+            return await postSync(ep, method, hkey, obj, skey, redirectDepth + 1);
+          } catch {
+            // try next host
+          }
+        }
+      }
+      throw new Error(
+        `AnkiWeb ${method} redirect ${res.status} without Location (headers: ${res.headerNames.join(", ") || "none"})`
+      );
     }
     const next = normalizeEndpoint(loc, base);
-    // Consume body so the connection can close cleanly
-    await res.arrayBuffer().catch(() => null);
     return postSync(next, method, hkey, obj, skey, redirectDepth + 1);
   }
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
+  if (res.status < 200 || res.status >= 300) {
+    const errText = res.body.toString("utf8").slice(0, 160);
     throw new Error(
-      `AnkiWeb ${method} failed (${res.status})${errText ? `: ${errText.slice(0, 160)}` : ""}`
+      `AnkiWeb ${method} failed (${res.status})${errText ? `: ${errText}` : ""}`
     );
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
-  const hasOriginal = res.headers.has("anki-original-size");
-  const body = maybeDecompress(buf, hasOriginal);
+  const hasOriginal = "anki-original-size" in res.headers;
+  const body = maybeDecompress(res.body, hasOriginal);
   return { endpoint: base, body };
 }
 
+async function downloadOnce(
+  endpoint: string,
+  hkey: string,
+  skey: string
+): Promise<{
+  endpoint: string;
+  body: Buffer;
+  status: number;
+  headerNames: string[];
+  location: string | null;
+  hasOriginalSize: boolean;
+}> {
+  const base = endpoint.replace(/\/?$/, "/");
+  const payload = zstdCompressSync(Buffer.from("{}", "utf8"));
+  const url = `${base}sync/download`;
+  const res = await rawRequest(url, {
+    method: "POST",
+    headers: {
+      "anki-sync": encodeAnkiSyncHeader(hkey, skey),
+      "Content-Type": "application/octet-stream",
+      Accept: "*/*",
+      "User-Agent": CLIENT_VER,
+    },
+    body: payload,
+  });
+  return {
+    endpoint: base,
+    body: res.body,
+    status: res.status,
+    headerNames: res.headerNames,
+    location: pickLocation(res.headers),
+    hasOriginalSize: "anki-original-size" in res.headers,
+  };
+}
+
+function decodeDownloadBody(body: Buffer, hasOriginalSize: boolean): Buffer {
+  const decompressed = maybeDecompress(body, hasOriginalSize);
+  const magic = decompressed.subarray(0, 15).toString("utf8");
+  if (magic.startsWith("SQLite format 3")) return decompressed;
+  if (!hasOriginalSize) {
+    try {
+      const again = zstdDecompressSync(body);
+      if (again.subarray(0, 15).toString("utf8").startsWith("SQLite format 3")) {
+        return again;
+      }
+    } catch {
+      // keep
+    }
+  }
+  return decompressed;
+}
+
 /**
- * Download can 303 to a one-shot URL; try POST redirect chain first, then GET Location.
+ * Full collection download with redirect + regional host fallback.
  */
 async function downloadWithRedirects(
   endpoint: string,
@@ -157,75 +222,95 @@ async function downloadWithRedirects(
   skey: string,
   redirectDepth = 0
 ): Promise<{ endpoint: string; body: Buffer }> {
-  if (redirectDepth > 8) {
+  if (redirectDepth > 10) {
     throw new Error("Too many AnkiWeb download redirects");
   }
 
-  const base = endpoint.replace(/\/?$/, "/");
-  const payload = zstdCompressSync(Buffer.from("{}", "utf8"));
-  const url = `${base}sync/download`;
+  const first = await downloadOnce(endpoint, hkey, skey);
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "anki-sync": encodeAnkiSyncHeader(hkey, skey),
-      "Content-Type": "application/octet-stream",
-      Accept: "*/*",
-      "User-Agent": CLIENT_VER,
-    },
-    body: payload,
-    redirect: "manual",
-  });
-
-  if (REDIRECT_STATUSES.has(res.status)) {
-    const loc = res.headers.get("location") || res.headers.get("Location");
-    if (!loc) {
-      throw new Error(`AnkiWeb download redirect ${res.status} without Location`);
-    }
-    await res.arrayBuffer().catch(() => null);
-
-    // 303 See Other often means GET the resource at Location
-    if (res.status === 303 || res.status === 302) {
-      const absolute = new URL(loc, base).toString();
-      // If Location still looks like an Anki sync host root, re-POST there
-      if (/\/sync\/?$/i.test(new URL(absolute).pathname) || /sync\d*\.ankiweb\.net\/?$/i.test(absolute.replace(/\/$/, ""))) {
-        const next = normalizeEndpoint(loc, base);
-        return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
+  if (REDIRECT_STATUSES.has(first.status)) {
+    if (first.location) {
+      const absolute = new URL(first.location, first.endpoint).toString();
+      const path = new URL(absolute).pathname;
+      // One-shot file URL → GET; sync host → re-POST
+      if (!/\/sync(\/|$)/i.test(path)) {
+        const getRes = await rawRequest(absolute, {
+          method: "GET",
+          headers: {
+            Accept: "*/*",
+            "User-Agent": CLIENT_VER,
+            "anki-sync": encodeAnkiSyncHeader(hkey, skey),
+          },
+        });
+        if (getRes.status >= 200 && getRes.status < 300) {
+          return {
+            endpoint: first.endpoint,
+            body: decodeDownloadBody(
+              getRes.body,
+              "anki-original-size" in getRes.headers
+            ),
+          };
+        }
       }
-      // Otherwise GET the one-shot URL
-      const getRes = await fetch(absolute, {
-        method: "GET",
-        headers: {
-          Accept: "*/*",
-          "User-Agent": CLIENT_VER,
-          "anki-sync": encodeAnkiSyncHeader(hkey, skey),
-        },
-        redirect: "follow",
-      });
-      if (!getRes.ok) {
-        // Fall back: treat Location as new sync endpoint and POST download again
-        const next = normalizeEndpoint(loc, base);
-        return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
-      }
-      const buf = Buffer.from(await getRes.arrayBuffer());
-      const hasOriginal = getRes.headers.has("anki-original-size");
-      return { endpoint: base, body: maybeDecompress(buf, hasOriginal) };
+      const next = normalizeEndpoint(first.location, first.endpoint);
+      return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
     }
 
-    const next = normalizeEndpoint(loc, base);
-    return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
-  }
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
+    // Bare 303/302 with no Location — probe regional sync hosts
+    const errors: string[] = [
+      `${first.endpoint}→${first.status}(no Location; headers: ${first.headerNames.join("|") || "none"})`,
+    ];
+    for (const ep of candidateEndpoints(first.endpoint)) {
+      if (ep === first.endpoint) continue;
+      try {
+        const attempt = await downloadOnce(ep, hkey, skey);
+        if (REDIRECT_STATUSES.has(attempt.status)) {
+          if (attempt.location) {
+            const next = normalizeEndpoint(attempt.location, ep);
+            return downloadWithRedirects(next, hkey, skey, redirectDepth + 1);
+          }
+          errors.push(`${ep}→${attempt.status}(no Location)`);
+          continue;
+        }
+        if (attempt.status >= 200 && attempt.status < 300) {
+          return {
+            endpoint: ep,
+            body: decodeDownloadBody(attempt.body, attempt.hasOriginalSize),
+          };
+        }
+        errors.push(`${ep}→${attempt.status}`);
+      } catch (e) {
+        errors.push(
+          `${ep}→${e instanceof Error ? e.message.slice(0, 40) : "err"}`
+        );
+      }
+    }
     throw new Error(
-      `AnkiWeb download failed (${res.status})${errText ? `: ${errText.slice(0, 160)}` : ""}`
+      `AnkiWeb download redirect ${first.status} without Location; tried: ${errors.slice(0, 8).join("; ")}`
     );
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
-  const hasOriginal = res.headers.has("anki-original-size");
-  return { endpoint: base, body: maybeDecompress(buf, hasOriginal) };
+  if (first.status < 200 || first.status >= 300) {
+    const errText = first.body.toString("utf8").slice(0, 160);
+    if (redirectDepth === 0) {
+      for (const ep of candidateEndpoints(first.endpoint)) {
+        if (ep === first.endpoint) continue;
+        try {
+          return await downloadWithRedirects(ep, hkey, skey, redirectDepth + 1);
+        } catch {
+          // continue
+        }
+      }
+    }
+    throw new Error(
+      `AnkiWeb download failed (${first.status})${errText ? `: ${errText}` : ""}`
+    );
+  }
+
+  return {
+    endpoint: first.endpoint,
+    body: decodeDownloadBody(first.body, first.hasOriginalSize),
+  };
 }
 
 export async function ankiLogin(
@@ -264,7 +349,6 @@ export async function ankiMeta(
   );
   const meta = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
 
-  // Prefer explicit new endpoint / host number from meta
   let resolved = endpoint;
   const newEp =
     (typeof meta.new_endpoint === "string" && meta.new_endpoint) ||
@@ -285,13 +369,12 @@ export async function ankiMeta(
 export async function ankiDownloadCollection(
   auth: AnkiAuth
 ): Promise<{ bytes: Uint8Array; endpoint: string }> {
-  // Resolve regional host via meta first (updates endpoint for hostNum / redirects)
   let endpoint = auth.endpoint;
   try {
     const { endpoint: ep } = await ankiMeta(auth);
     endpoint = ep;
   } catch {
-    // meta can fail on empty collections; still try download
+    // meta can fail; still try download / host probe
   }
 
   const skey = sessionKey();
@@ -318,10 +401,6 @@ export async function ankiDownloadCollection(
   );
 }
 
-/**
- * Full-upload a modified collection.anki2 to AnkiWeb.
- * Caller must download first, mutate locally, then upload — replaces server DB.
- */
 export async function ankiUploadCollection(
   auth: AnkiAuth,
   dbBytes: Uint8Array
@@ -330,18 +409,17 @@ export async function ankiUploadCollection(
   let endpoint = auth.endpoint.replace(/\/?$/, "/");
   let depth = 0;
 
-  // Prefer regional host
   try {
     const { endpoint: ep } = await ankiMeta(auth);
     endpoint = ep.replace(/\/?$/, "/");
   } catch {
-    // continue with existing endpoint
+    // continue
   }
 
   while (depth < 8) {
     const url = `${endpoint}sync/upload`;
     const compressed = zstdCompressSync(Buffer.from(dbBytes));
-    const res = await fetch(url, {
+    const res = await rawRequest(url, {
       method: "POST",
       headers: {
         "anki-sync": encodeAnkiSyncHeader(auth.hkey, skey),
@@ -350,22 +428,36 @@ export async function ankiUploadCollection(
         "User-Agent": CLIENT_VER,
       },
       body: compressed,
-      redirect: "manual",
     });
 
     if (REDIRECT_STATUSES.has(res.status)) {
-      const loc = res.headers.get("location") || res.headers.get("Location");
-      if (!loc) throw new Error("AnkiWeb upload redirect without location");
-      await res.arrayBuffer().catch(() => null);
+      const loc = pickLocation(res.headers);
+      if (!loc) {
+        // probe regionals
+        let advanced = false;
+        for (const ep of candidateEndpoints(endpoint)) {
+          if (ep === endpoint) continue;
+          endpoint = ep;
+          advanced = true;
+          break;
+        }
+        if (!advanced) {
+          throw new Error(
+            `AnkiWeb upload redirect ${res.status} without Location (headers: ${res.headerNames.join(", ") || "none"})`
+          );
+        }
+        depth += 1;
+        continue;
+      }
       endpoint = normalizeEndpoint(loc, endpoint);
       depth += 1;
       continue;
     }
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
+    if (res.status < 200 || res.status >= 300) {
+      const errText = res.body.toString("utf8").slice(0, 160);
       throw new Error(
-        `AnkiWeb upload failed (${res.status})${errText ? `: ${errText.slice(0, 160)}` : ""}`
+        `AnkiWeb upload failed (${res.status})${errText ? `: ${errText}` : ""}`
       );
     }
     return endpoint;
