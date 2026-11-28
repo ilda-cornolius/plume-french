@@ -3,17 +3,24 @@ import type { AnkiAuth } from "./ankiweb";
 
 const COOKIE_NAME = "plume_anki_session";
 
-function secretKey(): Buffer {
+function secretKey(): Buffer | null {
   const raw =
-    process.env.PLUME_SESSION_SECRET ||
-    process.env.SESSION_SECRET ||
-    "plume-local-dev-only-change-me";
+    process.env.PLUME_SESSION_SECRET?.trim() ||
+    process.env.SESSION_SECRET?.trim() ||
+    "";
+  if (!raw) return null;
   return createHash("sha256").update(raw).digest();
 }
 
 export function encryptSession(payload: object): string {
+  const key = secretKey();
+  if (!key) {
+    throw new Error(
+      "PLUME_SESSION_SECRET is not set — cannot encrypt AnkiWeb session"
+    );
+  }
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", secretKey(), iv);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
   const plaintext = Buffer.from(JSON.stringify(payload), "utf8");
   const enc = Buffer.concat([cipher.update(plaintext), cipher.final()]);
   const tag = cipher.getAuthTag();
@@ -22,11 +29,13 @@ export function encryptSession(payload: object): string {
 
 export function decryptSession<T>(token: string): T | null {
   try {
+    const key = secretKey();
+    if (!key) return null;
     const buf = Buffer.from(token, "base64url");
     const iv = buf.subarray(0, 12);
     const tag = buf.subarray(12, 28);
     const data = buf.subarray(28);
-    const decipher = createDecipheriv("aes-256-gcm", secretKey(), iv);
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
     decipher.setAuthTag(tag);
     const dec = Buffer.concat([decipher.update(data), decipher.final()]);
     return JSON.parse(dec.toString("utf8")) as T;

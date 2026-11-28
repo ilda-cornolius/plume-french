@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { aiConfigured, rewriteToFrench } from "@/lib/ai-rewrite";
+import { requirePaidApiCaller } from "@/lib/api-guard";
 import { getProviderStatus } from "@/lib/llm";
 
 const bodySchema = z.object({
@@ -9,6 +10,9 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
+    const gate = await requirePaidApiCaller(req);
+    if (!gate.ok) return gate.response;
+
     const json = await req.json();
     const parsed = bodySchema.safeParse(json);
     if (!parsed.success) {
