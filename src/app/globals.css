@@ -161,3 +161,46 @@ textarea {
 .cursor-blink {
   animation: softPulse 1.4s ease-in-out infinite;
 }
+
+@keyframes demoFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes demoPop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes demoProgress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+.demo-fade {
+  animation: demoFade 0.45s ease-out both;
+}
+
+.demo-pop {
+  animation: demoPop 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-demo-progress {
+  animation: demoProgress 4.2s linear both;
+}
