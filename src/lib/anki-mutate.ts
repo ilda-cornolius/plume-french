@@ -61,14 +61,56 @@ type ModelMap = Record<
 const DEFAULT_DECK = "Plume · Appris";
 
 /** Empty-ish protobuf blobs copied from Anki schema-18 Default deck. */
-const SCHEMA18_DECK_COMMON = Buffer.from("08011001", "hex");
-const SCHEMA18_DECK_KIND = Buffer.from("0a020801", "hex");
+const SCHEMA18_DECK_COMMON = new Uint8Array(Buffer.from("08011001", "hex"));
+const SCHEMA18_DECK_KIND = new Uint8Array(Buffer.from("0a020801", "hex"));
+
+/** Anki registers these in Rust; sql.js cannot — queries/indexes that need them fail. */
+const ANKI_CUSTOM_COLLATIONS = ["unicase", "unicode"];
 
 function tableExists(db: Database, name: string): boolean {
   const rows = db.exec(
     `SELECT 1 FROM sqlite_master WHERE type='table' AND name='${name.replace(/'/g, "''")}' LIMIT 1`
   );
   return Boolean(rows[0]?.values?.length);
+}
+
+/**
+ * Drop indexes that depend on Anki's custom collations (e.g. unicase).
+ * sql.js has no create_collation, so equality / unique checks on
+ * COLLATE unicase columns throw "no such collation sequence" or
+ * "no query solution". Index SQL often omits the collation name even
+ * when the column is unicase — drop all indexes on those tables.
+ * Safe on the in-memory copy we mutate before upload; Anki rebuilds indexes.
+ */
+function dropCustomCollationIndexes(db: Database): void {
+  const tables = db.exec(`SELECT name, sql FROM sqlite_master WHERE type = 'table'`);
+  if (!tables[0]?.values?.length) return;
+
+  const tainted = new Set<string>();
+  for (const row of tables[0].values) {
+    const name = String(row[0] || "");
+    const sql = String(row[1] || "").toLowerCase();
+    if (!name || name.startsWith("sqlite_")) continue;
+    if (ANKI_CUSTOM_COLLATIONS.some((c) => sql.includes(`collate ${c}`))) {
+      tainted.add(name);
+    }
+  }
+  if (!tainted.size) return;
+
+  const indexes = db.exec(
+    `SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'index'`
+  );
+  if (!indexes[0]?.values?.length) return;
+  for (const row of indexes[0].values) {
+    const name = String(row[0] || "");
+    const tbl = String(row[1] || "");
+    const sql = String(row[2] || "").toLowerCase();
+    if (!name || name.startsWith("sqlite_")) continue;
+    const byTable = tainted.has(tbl);
+    const bySql = ANKI_CUSTOM_COLLATIONS.some((c) => sql.includes(c));
+    if (!byTable && !bySql) continue;
+    db.run(`DROP INDEX IF EXISTS "${name.replace(/"/g, '""')}"`);
+  }
 }
 
 function collectionVersion(db: Database): number {
@@ -175,12 +217,19 @@ function resolveOrCreateDeckSchema11(
 }
 
 function resolveOrCreateDeckSchema18(db: Database, deckName: string): number {
-  const existing = db.exec(
-    `SELECT id FROM decks WHERE name = '${deckName.replace(/'/g, "''")}' LIMIT 1`
+  // Do not use WHERE name = … — decks.name is COLLATE unicase and sql.js
+  // cannot resolve that collation (throws "no query solution").
+  const all = db.exec(`SELECT id, name FROM decks`);
+  const target = deckName.toLowerCase();
+  const match = all[0]?.values?.find(
+    (row) => String(row[1] || "").toLowerCase() === target
   );
-  if (existing[0]?.values?.[0]?.[0] != null) {
-    return Number(existing[0].values[0][0]);
+  if (match?.[0] != null) {
+    return Number(match[0]);
   }
+
+  dropCustomCollationIndexes(db);
+
   const deckId = Date.now();
   const t = nowSec();
   db.run(
@@ -193,6 +242,14 @@ function resolveOrCreateDeckSchema18(db: Database, deckName: string): number {
       SCHEMA18_DECK_KIND,
     ]
   );
+  // Recreate a portable unique index Anki can live with until it rebuilds.
+  try {
+    db.run(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_name ON decks (name COLLATE NOCASE)`
+    );
+  } catch {
+    // ignore if name collision or schema forbids — notes still saved
+  }
   return deckId;
 }
 
@@ -225,6 +282,9 @@ export async function addCardsToCollection(
 
     const ver = collectionVersion(db);
     const schema18 = ver >= 18 || tableExists(db, "decks");
+
+    // Drop unicase indexes early so later inserts/lookups cannot trip them.
+    if (schema18) dropCustomCollationIndexes(db);
 
     const { mid, fieldCount } = schema18
       ? resolveModelSchema18(db)
