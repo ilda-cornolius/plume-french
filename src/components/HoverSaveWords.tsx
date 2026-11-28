@@ -139,6 +139,7 @@ export function HoverSaveWords({
     ipa: string;
     x: number;
     y: number;
+    place: "above" | "below";
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
@@ -220,13 +221,16 @@ export function HoverSaveWords({
   const openWord = async (word: string, el: HTMLElement) => {
     clearHide();
     const rect = el.getBoundingClientRect();
+    const place: "above" | "below" =
+      rect.top < 140 ? "below" : "above";
     let info = infoOf(word);
     setActive({
       word,
       en: info.en || "…",
       ipa: info.ipa || "",
       x: rect.left + rect.width / 2,
-      y: Math.max(rect.top, 48),
+      y: place === "above" ? Math.max(rect.top, 48) : rect.bottom + 8,
+      place,
     });
 
     // Hover card always needs meaning + pronunciation (toggles only control under-word lines)
@@ -240,6 +244,7 @@ export function HoverSaveWords({
               ...cur,
               en: info.en || cur.en || "…",
               ipa: info.ipa || cur.ipa || "",
+              place: cur.place,
             }
           : cur
       );
@@ -313,11 +318,17 @@ export function HoverSaveWords({
             key={`${i}-${t.value}`}
             type="button"
             tabIndex={-1}
-            className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition ${hoverBg} focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
+            className={`inline-flex min-h-9 min-w-[1.75rem] flex-col items-center justify-center rounded-sm px-0.5 align-baseline transition touch-manipulation ${hoverBg} focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
               glossEnabled || pronunciationEnabled ? "mx-0.5 py-0.5" : ""
             }`}
-            onMouseEnter={(e) => void openWord(t.value, e.currentTarget)}
-            onMouseLeave={scheduleHide}
+            onMouseEnter={(e) => {
+              if (window.matchMedia("(hover: hover)").matches) {
+                void openWord(t.value, e.currentTarget);
+              }
+            }}
+            onMouseLeave={() => {
+              if (window.matchMedia("(hover: hover)").matches) scheduleHide();
+            }}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -362,10 +373,18 @@ export function HoverSaveWords({
         <div
           role="dialog"
           aria-label={`Save ${active.word} to Anki`}
-          className="pointer-events-auto fixed z-20 -translate-x-1/2 -translate-y-full rounded-xl border border-[var(--line)] bg-ink px-3 py-2 shadow-glow"
+          className={`pointer-events-auto fixed z-[70] max-w-[min(18rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-xl border border-[var(--line)] bg-ink px-3 py-2 shadow-glow ${
+            active.place === "above" ? "-translate-y-full" : ""
+          }`}
           style={{
-            left: Math.min(Math.max(active.x, 72), (typeof window !== "undefined" ? window.innerWidth : 400) - 72),
-            top: Math.max(active.y - 8, 56),
+            left: Math.min(
+              Math.max(active.x, 88),
+              (typeof window !== "undefined" ? window.innerWidth : 400) - 88
+            ),
+            top:
+              active.place === "above"
+                ? Math.max(active.y - 8, 56)
+                : active.y,
           }}
           onMouseEnter={clearHide}
           onMouseLeave={scheduleHide}

@@ -322,17 +322,16 @@ export function ChatPractice() {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col px-5 pb-16 pt-4 sm:px-8 sm:pt-8">
-      <div className="mb-6 max-w-2xl animate-rise">
-        <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
+    <section className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pt-6">
+      <div className="mb-5 max-w-2xl animate-rise">
+        <p className="mb-2 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
           Conversation
         </p>
-        <h1 className="brand-display text-5xl font-extrabold text-paper sm:text-6xl">
+        <h1 className="brand-display text-4xl font-extrabold text-paper sm:text-6xl">
           Talk with Plume.
         </h1>
-        <p className="mt-3 text-lg text-mist sm:text-xl">
-          Practice spoken-style French in a chat. Hover any word for meaning and
-          pronunciation; toggles keep EN / say-it under words. Chats persist for{" "}
+        <p className="mt-3 text-base text-mist sm:text-xl">
+          Tap any word for meaning and pronunciation. Chats persist for{" "}
           <span className="text-paper">{ownerLabel}</span>.
         </p>
         <p className="mt-2 text-[11px] uppercase tracking-wide text-mist/50">
@@ -341,25 +340,25 @@ export function ChatPractice() {
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="panel-interactive flex max-h-[70vh] flex-col rounded-2xl p-3">
+      <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-4">
+        <aside className="panel-interactive flex max-h-40 flex-col rounded-2xl p-3 lg:max-h-[70vh]">
           <button
             type="button"
             onClick={() => void startNewChat()}
-            className="mb-3 w-full rounded-full bg-citrus px-3 py-2 text-sm font-semibold text-ink hover:bg-citrus-dim"
+            className="mb-3 min-h-11 w-full rounded-full bg-citrus px-3 py-2.5 text-sm font-semibold text-ink hover:bg-citrus-dim"
           >
             New chat
           </button>
           <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-mist/50">
             Past chats
           </p>
-          <ul className="flex-1 space-y-1 overflow-y-auto">
+          <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-1 lg:flex-col lg:space-y-1 lg:gap-0 lg:overflow-y-auto lg:pb-0">
             {history.map((c) => (
-              <li key={c.id} className="group relative">
+              <li key={c.id} className="group relative shrink-0 lg:shrink">
                 <button
                   type="button"
                   onClick={() => void openConversation(c.id)}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                  className={`min-h-11 w-max max-w-[14rem] rounded-xl px-3 py-2 text-left text-sm transition lg:w-full lg:max-w-none ${
                     c.id === conversationId
                       ? "bg-citrus/15 text-paper"
                       : "text-mist hover:bg-ink/40 hover:text-paper"
@@ -371,7 +370,7 @@ export function ChatPractice() {
                   type="button"
                   aria-label="Delete chat"
                   onClick={() => void removeConversation(c.id)}
-                  className="absolute right-1 top-1 hidden rounded px-1.5 text-xs text-mist/50 hover:text-ember group-hover:block"
+                  className="absolute right-1 top-1 min-h-8 min-w-8 rounded px-1.5 text-xs text-mist/50 opacity-100 hover:text-ember lg:opacity-0 lg:group-hover:opacity-100"
                 >
                   ×
                 </button>
@@ -383,7 +382,7 @@ export function ChatPractice() {
           </ul>
         </aside>
 
-        <div className="panel-chat relative z-10 flex h-[min(70vh,720px)] min-h-[420px] flex-col overflow-hidden rounded-2xl p-4 sm:p-5 [transform:translateZ(0)]">
+        <div className="panel-chat relative z-10 flex h-[min(62dvh,720px)] min-h-[340px] flex-col overflow-hidden rounded-2xl p-3 sm:min-h-[420px] sm:p-5 [transform:translateZ(0)]">
           <GlossToolbar
             className="mb-3 shrink-0 border-b border-[var(--line)] pb-3"
             glossOn={glossOn}

@@ -18,7 +18,14 @@
 }
 
 html {
-  font-size: 112.5%; /* 18px root — larger UI on phone + desktop */
+  font-size: 106.25%; /* ~17px on narrow phones — less overflow */
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (min-width: 480px) {
+  html {
+    font-size: 112.5%; /* 18px */
+  }
 }
 
 @media (min-width: 768px) {
@@ -30,6 +37,8 @@ html {
 html,
 body {
   min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
 }
 
 body {

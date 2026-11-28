@@ -279,42 +279,40 @@ export function WritingPractice() {
   }
 
   return (
-    <section className="mx-auto w-full max-w-6xl px-5 pb-20 pt-4 sm:px-8 sm:pt-8">
-      <div className="mb-10 max-w-2xl animate-rise">
-        <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
-          Plume
-        </p>
-        <h1 className="brand-display text-5xl font-extrabold leading-[1.05] text-paper sm:text-7xl">
-          Messy Franglais.
-          <br />
-          <span className="text-mist">Clear French.</span>
-        </h1>
-        <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
-          Type mixed French and English however it comes out. Sessions save for{" "}
-          <span className="text-paper">{ownerLabel}</span>. Hover a word for
-          meaning and pronunciation; toggles keep EN / say-it under words.
+    <section
+      id="practice"
+      className="mx-auto w-full max-w-6xl scroll-mt-4 px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pt-4"
+    >
+      <div className="mb-5 max-w-2xl animate-rise">
+        <h2 className="brand-display text-2xl font-extrabold text-paper sm:text-3xl">
+          Écrire
+        </h2>
+        <p className="mt-2 text-base leading-relaxed text-mist sm:text-lg">
+          Type mixed French and English. Sessions save for{" "}
+          <span className="text-paper">{ownerLabel}</span>. Tap a word for
+          meaning and pronunciation.
         </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[200px_minmax(0,1fr)]">
-        <aside className="panel-interactive flex max-h-[70vh] flex-col rounded-2xl p-3">
+        <aside className="panel-interactive flex max-h-44 flex-col rounded-2xl p-3 lg:max-h-[70vh]">
           <button
             type="button"
             onClick={newSession}
-            className="mb-3 w-full rounded-full bg-citrus px-3 py-2 text-sm font-semibold text-ink hover:bg-citrus-dim"
+            className="mb-3 min-h-11 w-full rounded-full bg-citrus px-3 py-2.5 text-sm font-semibold text-ink hover:bg-citrus-dim"
           >
             New rewrite
           </button>
           <p className="mb-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-mist/50">
             Past writing
           </p>
-          <ul className="flex-1 space-y-1 overflow-y-auto">
+          <ul className="flex gap-2 overflow-x-auto pb-1 lg:flex-1 lg:flex-col lg:space-y-1 lg:gap-0 lg:overflow-y-auto lg:pb-0">
             {history.map((c) => (
-              <li key={c.id}>
+              <li key={c.id} className="shrink-0 lg:shrink">
                 <button
                   type="button"
                   onClick={() => void openWriting(c.id)}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                  className={`min-h-11 w-max max-w-[14rem] rounded-xl px-3 py-2 text-left text-sm transition lg:w-full lg:max-w-none ${
                     c.id === activeId
                       ? "bg-citrus/15 text-paper"
                       : "text-mist hover:bg-ink/40 hover:text-paper"
