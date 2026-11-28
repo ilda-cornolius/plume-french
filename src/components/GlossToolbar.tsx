@@ -30,8 +30,8 @@ export function GlossToolbar({
       ? null
       : hint ??
         (pronOn
-          ? "Say-it under words (dire → deer) · hover a word to save to Anki"
-          : "Pronunciation tips hidden · hover a word to save to Anki");
+          ? "Under-word say-it on · hover any word for meaning + pronunciation"
+          : "Under-word say-it off · hover still shows meaning + pronunciation");
 
   return (
     <div

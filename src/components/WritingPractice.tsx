@@ -291,8 +291,8 @@ export function WritingPractice() {
         </h1>
         <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
           Type mixed French and English however it comes out. Sessions save for{" "}
-          <span className="text-paper">{ownerLabel}</span>. Turn on English and
-          say-it tips below; hover a word to save to Anki.
+          <span className="text-paper">{ownerLabel}</span>. Hover a word for
+          meaning and pronunciation; toggles keep EN / say-it under words.
         </p>
       </div>
 
