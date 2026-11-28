@@ -64,10 +64,11 @@ export function AuthButton() {
   if (!status.googleConfigured) {
     return (
       <span
-        className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs text-mist/60"
+        className="rounded-full border border-[var(--line)] px-2.5 py-1.5 text-[10px] text-mist/60 sm:px-3 sm:text-xs"
         title="Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
       >
-        Google login off
+        <span className="sm:hidden">Auth off</span>
+        <span className="hidden sm:inline">Google login off</span>
       </span>
     );
   }

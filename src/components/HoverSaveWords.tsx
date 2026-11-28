@@ -221,8 +221,10 @@ export function HoverSaveWords({
   const openWord = async (word: string, el: HTMLElement) => {
     clearHide();
     const rect = el.getBoundingClientRect();
+    const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+    // Prefer above when near the chat composer / bottom of the screen
     const place: "above" | "below" =
-      rect.top < 140 ? "below" : "above";
+      rect.top < 120 && rect.bottom <= vh - 200 ? "below" : "above";
     let info = infoOf(word);
     setActive({
       word,
@@ -390,9 +392,23 @@ export function HoverSaveWords({
           onMouseLeave={scheduleHide}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <p className="text-center text-sm font-semibold text-paper">
-            {active.word}
-          </p>
+          <div className="relative mb-0.5 flex items-start justify-center">
+            <p className="text-center text-sm font-semibold text-paper">
+              {active.word}
+            </p>
+            <button
+              type="button"
+              aria-label="Close"
+              className="absolute -right-1 -top-1 min-h-8 min-w-8 rounded-full text-mist/60 hover:text-paper"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setActive(null);
+              }}
+            >
+              ×
+            </button>
+          </div>
           <div className="mb-1.5 mt-1 space-y-0.5 text-center">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-mist/50">
               Meaning
@@ -419,7 +435,7 @@ export function HoverSaveWords({
                 active.ipa || infoOf(active.word).ipa
               )
             }
-            className="whitespace-nowrap rounded-full bg-citrus px-3 py-1.5 text-xs font-semibold text-ink hover:bg-citrus-dim disabled:opacity-50"
+            className="min-h-10 w-full whitespace-nowrap rounded-full bg-citrus px-3 py-2 text-xs font-semibold text-ink hover:bg-citrus-dim disabled:opacity-50"
           >
             {busy ? "Saving…" : "Save to Anki · Appris"}
           </button>

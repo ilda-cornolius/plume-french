@@ -341,7 +341,7 @@ export function ChatPractice() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-4">
-        <aside className="panel-interactive flex max-h-40 flex-col rounded-2xl p-3 lg:max-h-[70vh]">
+        <aside className="panel-interactive flex max-h-28 flex-col rounded-2xl p-3 sm:max-h-40 lg:max-h-[70vh]">
           <button
             type="button"
             onClick={() => void startNewChat()}
@@ -382,7 +382,7 @@ export function ChatPractice() {
           </ul>
         </aside>
 
-        <div className="panel-chat relative z-10 flex h-[min(62dvh,720px)] min-h-[340px] flex-col overflow-hidden rounded-2xl p-3 sm:min-h-[420px] sm:p-5 [transform:translateZ(0)]">
+        <div className="panel-chat relative z-10 flex h-[min(68dvh,720px)] min-h-[320px] flex-col overflow-hidden rounded-2xl p-3 sm:min-h-[420px] sm:p-5 [transform:translateZ(0)]">
           <GlossToolbar
             className="mb-3 shrink-0 border-b border-[var(--line)] pb-3"
             glossOn={glossOn}
@@ -427,7 +427,7 @@ export function ChatPractice() {
           </div>
 
           <form
-            className="relative z-50 mt-4 flex shrink-0 flex-wrap gap-2 border-t border-[var(--line)] bg-[#0c2430] pt-4"
+            className="relative z-50 mt-3 flex shrink-0 flex-col gap-2 border-t border-[var(--line)] bg-[#0c2430] pt-3 sm:mt-4 sm:flex-row sm:flex-wrap sm:pt-4"
             onSubmit={(e) => {
               e.preventDefault();
               send();
@@ -437,7 +437,7 @@ export function ChatPractice() {
               ref={inputRef}
               id="plume-chat-input"
               name="message"
-              rows={1}
+              rows={2}
               inputMode="text"
               autoComplete="off"
               autoCorrect="off"
@@ -459,14 +459,14 @@ export function ChatPractice() {
                   el.focus({ preventScroll: true });
                 });
               }}
-              placeholder="Écris en français (ou Franglais)…"
-              className="pointer-events-auto relative z-50 min-h-[3.25rem] min-w-0 flex-1 resize-none touch-manipulation select-text rounded-[1.75rem] border border-[var(--line)] bg-[#f4fafb] px-5 py-3.5 text-lg leading-snug text-black outline-none placeholder:text-black/40 focus:border-citrus/50"
+              placeholder="Écris en français…"
+              className="pointer-events-auto relative z-50 min-h-[3.25rem] w-full min-w-0 flex-1 resize-none touch-manipulation select-text rounded-[1.75rem] border border-[var(--line)] bg-[#f4fafb] px-4 py-3 text-base leading-snug text-black outline-none placeholder:text-black/40 focus:border-citrus/50 sm:px-5 sm:py-3.5 sm:text-lg"
               style={{ WebkitUserSelect: "text", userSelect: "text" }}
             />
             <button
               type="submit"
               disabled={pending || !input.trim()}
-              className="relative z-50 touch-manipulation self-end rounded-full bg-citrus px-6 py-3.5 text-base font-semibold text-ink hover:bg-citrus-dim disabled:opacity-40"
+              className="relative z-50 min-h-11 w-full touch-manipulation rounded-full bg-citrus px-6 py-3 text-base font-semibold text-ink hover:bg-citrus-dim disabled:opacity-40 sm:w-auto sm:self-end sm:py-3.5"
             >
               Envoyer
             </button>
