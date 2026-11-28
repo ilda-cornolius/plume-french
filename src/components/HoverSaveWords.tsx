@@ -47,8 +47,8 @@ function isSaveableWord(w: string): boolean {
   return true;
 }
 
-/** Bump when pronunciation format changes so stale IPA cache is dropped. */
-const CACHE_VERSION = "say-v2";
+/** Bump when gloss/pronunciation format changes so stale cache is dropped. */
+const CACHE_VERSION = "gloss-v3";
 const infoCache = new Map<string, WordInfo>();
 
 function cacheKey(word: string): string {

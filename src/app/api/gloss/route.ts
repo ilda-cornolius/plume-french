@@ -93,8 +93,9 @@ export async function POST(req: Request) {
 Return ONLY JSON:
 {"items":{"frenchWord":{"en":"english gloss","say":"zhay-nee-AL"},...}}
 Rules:
-- en: 1–4 English words (base meaning).
-- say: English sound-alike ONLY — hyphenated syllables, CAPS on stress when helpful. Examples: bonjour→bohn-ZHOOR, génial→zhay-nee-AL, je→zhuh, café→ka-FAY.
+- en: 1–4 English words (base meaning in this sentence).
+- False friends: magasin = shop/store (NOT magazine); librairie = bookstore (NOT library); pain = bread (NOT pain).
+- say: English sound-alike ONLY — hyphenated syllables, CAPS on stress when helpful. Examples: bonjour→bohn-ZHOOR, magasin→mah-gah-ZAN, génial→zhay-nee-AL, je→zhuh, café→ka-FAY.
 - NEVER use IPA or phonetic symbols (no /slashes/, no ə ɛ ɔ ʃ ʒ etc).
 - Keep exact French keys as given.
 - Function words stay short (je→zhuh, le→luh).`,
@@ -134,18 +135,27 @@ Rules:
               ([k]) => k.toLowerCase() === w.toLowerCase()
             )?.[1];
 
-          const en =
+          const hadLocalEn = Boolean(glosses[w] && glosses[w] !== "…");
+          const llmEn =
             (item && typeof item.en === "string" && item.en.trim()) ||
             pickField(obj.glosses, w) ||
-            glosses[w] ||
-            "…";
+            "";
+          // Never let the model overwrite a local dictionary gloss (e.g. magasin → magazine)
+          const en = hadLocalEn
+            ? glosses[w]
+            : llmEn || glosses[w] || localGloss(w) || "…";
+
           const sayRaw =
             (item && typeof item.say === "string" && item.say.trim()) ||
             (item && typeof item.ipa === "string" && item.ipa.trim()) ||
             pickField(obj.pronunciations, w) ||
             pronunciations[w] ||
             "";
-          const say = normalizeSay(sayRaw) || pronunciations[w] || "";
+          const say =
+            normalizeSay(sayRaw) ||
+            pronunciations[w] ||
+            localIpa(w) ||
+            "";
 
           glosses[w] = String(en).slice(0, 48);
           if (say) pronunciations[w] = say;
