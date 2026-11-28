@@ -331,8 +331,8 @@ export function ChatPractice() {
           Talk with Plume.
         </h1>
         <p className="mt-3 text-lg text-mist sm:text-xl">
-          Practice spoken-style French in a chat. Turn on English and say-it
-          tips below; hover a word to save to Anki. Chats persist for{" "}
+          Practice spoken-style French in a chat. Hover any word for meaning and
+          pronunciation; toggles keep EN / say-it under words. Chats persist for{" "}
           <span className="text-paper">{ownerLabel}</span>.
         </p>
         <p className="mt-2 text-[11px] uppercase tracking-wide text-mist/50">
@@ -479,8 +479,8 @@ export function ChatPractice() {
             </p>
           )}
           <p className="mt-2 text-[11px] text-mist/45">
-            Tip: EN / Pronunciation toggles sync with Écrire. Hover any word →
-            Save to Anki · Appris (includes say-it when Pronunciation is on).
+            Tip: hover a word → meaning + pronunciation + Save to Anki · Appris.
+            EN / Pronunciation toggles keep tips under words (synced with Écrire).
           </p>
         </div>
       </div>

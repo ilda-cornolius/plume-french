@@ -229,20 +229,22 @@ export function HoverSaveWords({
       y: Math.max(rect.top, 48),
     });
 
-    // Always refresh pronunciation/meaning on hover if incomplete
-    if (!info.en || info.en === "…" || !info.ipa) {
-      try {
-        const map = await fetchWordInfo([word], text);
-        info = map[word] || info;
-        setInfos((prev) => ({ ...prev, ...map }));
-        setActive((cur) =>
-          cur && cur.word === word
-            ? { ...cur, en: info.en || cur.en, ipa: info.ipa || cur.ipa }
-            : cur
-        );
-      } catch {
-        // ignore
-      }
+    // Hover card always needs meaning + pronunciation (toggles only control under-word lines)
+    try {
+      const map = await fetchWordInfo([word], text);
+      info = map[word] || info;
+      setInfos((prev) => ({ ...prev, ...map }));
+      setActive((cur) =>
+        cur && cur.word === word
+          ? {
+              ...cur,
+              en: info.en || cur.en || "…",
+              ipa: info.ipa || cur.ipa || "",
+            }
+          : cur
+      );
+    } catch {
+      // ignore — card still shows cached / placeholder values
     }
   };
 
@@ -312,9 +314,7 @@ export function HoverSaveWords({
             type="button"
             tabIndex={-1}
             className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition ${hoverBg} focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
-              glossEnabled || pronunciationEnabled
-                ? "mx-0.5 py-0.5"
-                : "border-b border-dotted border-transparent hover:border-citrus/70"
+              glossEnabled || pronunciationEnabled ? "mx-0.5 py-0.5" : ""
             }`}
             onMouseEnter={(e) => void openWord(t.value, e.currentTarget)}
             onMouseLeave={scheduleHide}
@@ -323,9 +323,17 @@ export function HoverSaveWords({
               e.stopPropagation();
               void openWord(t.value, e.currentTarget);
             }}
-            aria-label={`${t.value}${glossEnabled && infoOf(t.value).en ? `: ${infoOf(t.value).en}` : ""}${pronunciationEnabled && infoOf(t.value).ipa ? ` ${infoOf(t.value).ipa}` : ""}. Save to Anki`}
+            aria-label={`${t.value}${infoOf(t.value).en ? `: ${infoOf(t.value).en}` : ""}${infoOf(t.value).ipa ? ` (${infoOf(t.value).ipa})` : ""}. Meaning, pronunciation, save to Anki`}
           >
-            <span className="leading-tight">{t.value}</span>
+            <span
+              className={`leading-tight ${
+                glossEnabled || pronunciationEnabled
+                  ? ""
+                  : "underline decoration-dotted decoration-citrus/50 underline-offset-2"
+              }`}
+            >
+              {t.value}
+            </span>
             {glossEnabled && (
               <span
                 className={`mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] font-normal leading-tight ${glossClass}`}
@@ -366,20 +374,22 @@ export function HoverSaveWords({
           <p className="text-center text-sm font-semibold text-paper">
             {active.word}
           </p>
-          <p className="text-center text-xs text-mist">
-            {active.en && active.en !== "…"
-              ? active.en
-              : infoOf(active.word).en || "…"}
-          </p>
-          {pronunciationEnabled && (active.ipa || infoOf(active.word).ipa) ? (
-            <p className="mb-1.5 text-center text-[11px] italic text-citrus/90">
-              {active.ipa || infoOf(active.word).ipa}
+          <div className="mb-1.5 mt-1 space-y-0.5 text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-mist/50">
+              Meaning
             </p>
-          ) : pronunciationEnabled ? (
-            <p className="mb-1.5 text-center text-[10px] text-mist/50">…</p>
-          ) : (
-            <div className="mb-1.5" />
-          )}
+            <p className="text-xs text-mist">
+              {active.en && active.en !== "…"
+                ? active.en
+                : infoOf(active.word).en || "…"}
+            </p>
+            <p className="pt-1 text-[10px] font-semibold uppercase tracking-wide text-mist/50">
+              Pronunciation
+            </p>
+            <p className="text-[11px] italic text-citrus/90">
+              {active.ipa || infoOf(active.word).ipa || "…"}
+            </p>
+          </div>
           <button
             type="button"
             disabled={busy}
@@ -387,9 +397,7 @@ export function HoverSaveWords({
               saveWord(
                 active.word,
                 active.en || infoOf(active.word).en,
-                pronunciationEnabled
-                  ? active.ipa || infoOf(active.word).ipa
-                  : ""
+                active.ipa || infoOf(active.word).ipa
               )
             }
             className="whitespace-nowrap rounded-full bg-citrus px-3 py-1.5 text-xs font-semibold text-ink hover:bg-citrus-dim disabled:opacity-50"
