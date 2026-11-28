@@ -77,9 +77,9 @@ export function ProductDemo() {
         </div>
 
         <div className="grid gap-0 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
-          <ol className="flex gap-1 overflow-x-auto border-b border-[var(--line)] p-2 sm:flex-col sm:overflow-visible sm:border-b-0 sm:border-r sm:p-3">
+          <ol className="grid grid-cols-3 gap-1 border-b border-[var(--line)] p-2 sm:flex sm:flex-col sm:border-b-0 sm:border-r sm:p-3">
             {STEPS.map((s, i) => (
-              <li key={s.id} className="shrink-0">
+              <li key={s.id} className={i === STEPS.length - 1 ? "col-span-1 sm:col-auto" : ""}>
                 <button
                   type="button"
                   onClick={() => {
@@ -87,13 +87,13 @@ export function ProductDemo() {
                     setPaused(true);
                   }}
                   aria-current={i === step ? "step" : undefined}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
+                  className={`min-h-10 w-full rounded-xl px-2 py-2 text-left text-xs transition sm:px-3 sm:text-sm ${
                     i === step
                       ? "bg-citrus/15 font-semibold text-citrus"
                       : "text-mist hover:bg-ink/40 hover:text-paper"
                   }`}
                 >
-                  <span className="mr-1.5 text-[10px] text-mist/45">
+                  <span className="mr-1 text-[10px] text-mist/45">
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   {s.label}
@@ -211,16 +211,16 @@ export function ProductHero() {
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
             Plume
           </p>
-          <h1 className="brand-display text-5xl font-extrabold leading-[1.05] text-paper sm:text-6xl lg:text-7xl">
+          <h1 className="brand-display text-4xl font-extrabold leading-[1.08] text-paper sm:text-6xl lg:text-7xl">
             Messy Franglais.
             <br />
             <span className="text-mist">Clear French.</span>
           </h1>
-          <p className="mt-4 max-w-md text-lg leading-relaxed text-mist sm:text-xl">
+          <p className="mt-3 max-w-md text-base leading-relaxed text-mist sm:mt-4 sm:text-xl">
             Rewrite, hover for meaning and pronunciation, save to Anki, then
             keep talking on Parler.
           </p>
-          <div className="mt-6 flex flex-wrap gap-3">
+          <div className="mt-5 flex flex-wrap gap-3 sm:mt-6">
             <a
               href="#practice"
               className="inline-flex min-h-11 items-center rounded-full bg-citrus px-6 py-3 text-base font-semibold text-ink transition hover:bg-citrus-dim"
