@@ -322,7 +322,7 @@ export function ChatPractice() {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-6xl flex-col px-4 pb-[max(4rem,env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pt-6">
+    <section className="mx-auto flex w-full max-w-6xl flex-col px-3 pb-[max(4rem,env(safe-area-inset-bottom))] pt-1 sm:px-6 sm:pt-6 lg:px-8">
       <div className="mb-5 max-w-2xl animate-rise">
         <p className="mb-2 text-sm font-semibold uppercase tracking-[0.22em] text-citrus">
           Conversation

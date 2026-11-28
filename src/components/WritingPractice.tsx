@@ -281,7 +281,7 @@ export function WritingPractice() {
   return (
     <section
       id="practice"
-      className="mx-auto w-full max-w-6xl scroll-mt-4 px-4 pb-[max(5rem,env(safe-area-inset-bottom))] pt-2 sm:px-8 sm:pt-4"
+      className="mx-auto w-full max-w-6xl scroll-mt-4 px-3 pb-[max(5rem,env(safe-area-inset-bottom))] pt-1 sm:px-6 sm:pt-4 lg:px-8"
     >
       <div className="mb-5 max-w-2xl animate-rise">
         <h2 className="brand-display text-2xl font-extrabold text-paper sm:text-3xl">
