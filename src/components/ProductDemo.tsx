@@ -36,6 +36,8 @@ const STEPS: Step[] = [
   },
 ];
 
+const STEP_MS = 4800;
+
 /**
  * Cinematic product walkthrough for the home hero —
  * action-cam energy: phone stage, step crossfades, live typing beat.
@@ -47,27 +49,17 @@ export function ProductDemo() {
 
   useEffect(() => {
     if (paused) return;
-    const id = window.setInterval(() => {
+    const id = window.setTimeout(() => {
       setStep((s) => (s + 1) % STEPS.length);
       setTick((t) => t + 1);
-    }, 4200);
-    return () => window.clearInterval(id);
-  }, [paused]);
+    }, STEP_MS);
+    return () => window.clearTimeout(id);
+  }, [paused, step, tick]);
 
   const current = STEPS[step]!;
 
   return (
-    <div
-      className="animate-rise-delay w-full min-w-0"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocusCapture={() => setPaused(true)}
-      onBlurCapture={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-          setPaused(false);
-        }
-      }}
-    >
+    <div className="animate-rise-delay w-full min-w-0">
       {/* Outer cinematic frame */}
       <div className="relative w-full overflow-hidden rounded-[1.35rem] border border-[var(--line)] bg-gradient-to-b from-ink-3/80 to-ink-2 shadow-glow">
         <div
@@ -88,9 +80,20 @@ export function ProductDemo() {
               Live walkthrough
             </span>
           </div>
-          <span className="shrink-0 rounded-full bg-citrus/15 px-2.5 py-0.5 text-[10px] font-semibold text-citrus">
-            {String(step + 1).padStart(2, "0")} / {String(STEPS.length).padStart(2, "0")}
-          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPaused((p) => !p)}
+              className="rounded-full border border-[var(--line)] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-mist transition hover:border-citrus/40 hover:text-paper"
+              aria-pressed={paused}
+            >
+              {paused ? "Play" : "Pause"}
+            </button>
+            <span className="rounded-full bg-citrus/15 px-2.5 py-0.5 text-[10px] font-semibold text-citrus">
+              {String(step + 1).padStart(2, "0")} /{" "}
+              {String(STEPS.length).padStart(2, "0")}
+            </span>
+          </div>
         </div>
 
         <div className="relative grid min-w-0 gap-0 md:grid-cols-[7rem_minmax(0,1fr)]">
@@ -124,7 +127,7 @@ export function ProductDemo() {
 
           <div className="relative flex min-h-0 min-w-0 flex-col p-3 sm:p-4 md:p-5">
             <p
-              key={`cap-${tick}`}
+              key={`cap-${current.id}-${tick}`}
               className="demo-fade mb-3 text-pretty text-sm leading-snug text-mist sm:mb-4 sm:leading-relaxed"
             >
               {current.caption}
@@ -132,12 +135,15 @@ export function ProductDemo() {
 
             {/* Phone / action stage */}
             <div className="relative mx-auto w-full max-w-[22rem] flex-1">
-              <div className="rounded-[1.5rem] border border-[var(--line)] bg-ink/70 p-2 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.85)] sm:p-2.5">
+              <div className="demo-stage-drift rounded-[1.5rem] border border-[var(--line)] bg-ink/70 p-2 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.85)] sm:p-2.5">
                 <div className="mb-2 flex justify-center">
                   <span className="h-1 w-10 rounded-full bg-mist/25" aria-hidden />
                 </div>
                 <div className="min-h-[11rem] overflow-hidden rounded-[1.1rem] border border-[var(--line)] bg-[#07141c] p-3 sm:min-h-[12.5rem] sm:p-4">
-                  <div key={`stage-${tick}`} className="demo-fade flex h-full min-h-[9.5rem] flex-col justify-center">
+                  <div
+                    key={`stage-${current.id}-${tick}`}
+                    className="demo-fade flex h-full min-h-[9.5rem] flex-col justify-center"
+                  >
                     <DemoStage stepId={current.id} />
                   </div>
                 </div>
@@ -148,14 +154,23 @@ export function ProductDemo() {
               {STEPS.map((s, i) => (
                 <span
                   key={s.id}
-                  className={`relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-mist/20`}
+                  className="relative h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-mist/20"
                 >
-                  <span
-                    className={`absolute inset-y-0 left-0 rounded-full bg-citrus transition-all duration-500 ${
-                      i < step ? "w-full" : i === step ? "w-full animate-demo-progress" : "w-0"
-                    }`}
-                    style={i === step && !paused ? undefined : i === step ? { animation: "none" } : undefined}
-                  />
+                  {i < step ? (
+                    <span className="absolute inset-y-0 left-0 w-full rounded-full bg-citrus" />
+                  ) : i === step ? (
+                    <span
+                      key={`prog-${tick}-${paused ? "p" : "r"}`}
+                      className="absolute inset-y-0 left-0 rounded-full bg-citrus"
+                      style={
+                        paused
+                          ? { width: "35%" }
+                          : {
+                              animation: `demoProgress ${STEP_MS}ms linear both`,
+                            }
+                      }
+                    />
+                  ) : null}
                 </span>
               ))}
             </div>

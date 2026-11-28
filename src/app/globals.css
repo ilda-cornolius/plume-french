@@ -193,6 +193,16 @@ textarea {
   }
 }
 
+@keyframes demoStageDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-0.35deg);
+  }
+  50% {
+    transform: translate3d(0, -4px, 0) rotate(0.45deg);
+  }
+}
+
 .demo-fade {
   animation: demoFade 0.45s ease-out both;
 }
@@ -202,5 +212,17 @@ textarea {
 }
 
 .animate-demo-progress {
-  animation: demoProgress 4.2s linear both;
+  animation: demoProgress 4.8s linear both;
+}
+
+.demo-stage-drift {
+  animation: demoStageDrift 6.5s ease-in-out infinite;
+  transform-origin: 50% 60%;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-stage-drift {
+    animation: none;
+  }
 }
