@@ -169,7 +169,7 @@ function DemoStage({ stepId }: { stepId: string }) {
           <p className="mt-1 text-[10px] uppercase tracking-wide text-mist/50">
             Meaning
           </p>
-          <p className="text-xs text-mist">store / shop</p>
+          <p className="text-xs text-mist">shop / store</p>
           <p className="mt-1.5 text-[10px] uppercase tracking-wide text-mist/50">
             Pronunciation
           </p>
@@ -183,7 +183,7 @@ function DemoStage({ stepId }: { stepId: string }) {
       <div className="w-full space-y-2.5 sm:space-y-3">
         <div className="rounded-xl border border-citrus/30 bg-citrus/10 px-3 py-2.5 sm:px-4 sm:py-3">
           <p className="text-pretty text-sm font-semibold text-citrus">
-            Saved « magasin » → store / shop
+            Saved « magasin » → shop / store
           </p>
           <p className="mt-1 text-pretty text-xs text-mist">
             Pronunciation: mah-gah-ZAN · Plume · Appris
