@@ -8,8 +8,7 @@ import {
   readPronunciationEnabled,
   writePronunciationEnabled,
 } from "@/components/HoverSaveWords";
-import { GlossToggle } from "@/components/GlossToggle";
-import { PronunciationToggle } from "@/components/PronunciationToggle";
+import { GlossToolbar } from "@/components/GlossToolbar";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -333,7 +332,7 @@ export function ChatPractice() {
         </h1>
         <p className="mt-3 text-lg text-mist sm:text-xl">
           Practice spoken-style French in a chat. Turn on English and say-it
-          tips in the chat box; hover a word to save to Anki. Chats persist for{" "}
+          tips below; hover a word to save to Anki. Chats persist for{" "}
           <span className="text-paper">{ownerLabel}</span>.
         </p>
         <p className="mt-2 text-[11px] uppercase tracking-wide text-mist/50">
@@ -385,27 +384,19 @@ export function ChatPractice() {
         </aside>
 
         <div className="panel-chat relative z-10 flex h-[min(70vh,720px)] min-h-[420px] flex-col overflow-hidden rounded-2xl p-4 sm:p-5 [transform:translateZ(0)]">
-          <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--line)] pb-3">
-            <GlossToggle
-              enabled={glossOn}
-              onChange={(on) => {
-                setGlossOn(on);
-                writeGlossEnabled(on);
-              }}
-            />
-            <PronunciationToggle
-              enabled={pronOn}
-              onChange={(on) => {
-                setPronOn(on);
-                writePronunciationEnabled(on);
-              }}
-            />
-            <p className="text-[11px] text-mist/45">
-              {pronOn
-                ? "Say-it under words (dire → deer) + hover"
-                : "Pronunciation tips hidden"}
-            </p>
-          </div>
+          <GlossToolbar
+            className="mb-3 shrink-0 border-b border-[var(--line)] pb-3"
+            glossOn={glossOn}
+            pronOn={pronOn}
+            onGlossChange={(on) => {
+              setGlossOn(on);
+              writeGlossEnabled(on);
+            }}
+            onPronChange={(on) => {
+              setPronOn(on);
+              writePronunciationEnabled(on);
+            }}
+          />
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1">
             {messages.map((m, i) => (
               <div
@@ -419,17 +410,14 @@ export function ChatPractice() {
                       : "border border-[var(--line)] bg-ink/50 text-paper"
                   }`}
                 >
-                  {m.role === "assistant" ? (
-                    <HoverSaveWords
-                      text={m.content}
-                      glossEnabled={glossOn}
-                      pronunciationEnabled={pronOn}
-                      onSaved={(_w, msg) => setAnkiHint(msg)}
-                      onError={(msg) => setAnkiHint(msg)}
-                    />
-                  ) : (
-                    m.content
-                  )}
+                  <HoverSaveWords
+                    text={m.content}
+                    glossEnabled={glossOn}
+                    pronunciationEnabled={pronOn}
+                    tone={m.role === "user" ? "on-light" : "on-dark"}
+                    onSaved={(_w, msg) => setAnkiHint(msg)}
+                    onError={(msg) => setAnkiHint(msg)}
+                  />
                 </div>
               </div>
             ))}
@@ -491,7 +479,7 @@ export function ChatPractice() {
             </p>
           )}
           <p className="mt-2 text-[11px] text-mist/45">
-            Tip: toggles above stay on/off like your saved chats. Hover a word →
+            Tip: EN / Pronunciation toggles sync with Écrire. Hover any word →
             Save to Anki · Appris (includes say-it when Pronunciation is on).
           </p>
         </div>

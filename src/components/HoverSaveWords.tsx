@@ -12,6 +12,11 @@ type Props = {
   glossEnabled?: boolean;
   /** FL-13/15: show English sound-alike under words / in hover popup */
   pronunciationEnabled?: boolean;
+  /**
+   * Contrast for under-word gloss/say-it lines.
+   * Use `on-light` on citrus/user bubbles; `on-dark` on ink panels (default).
+   */
+  tone?: "on-dark" | "on-light";
   onSaved?: (word: string, message: string) => void;
   onError?: (message: string) => void;
 };
@@ -118,9 +123,16 @@ export function HoverSaveWords({
   className,
   glossEnabled = false,
   pronunciationEnabled = false,
+  tone = "on-dark",
   onSaved,
   onError,
 }: Props) {
+  const glossClass =
+    tone === "on-light" ? "text-ink/65" : "text-mist/80";
+  const sayClass =
+    tone === "on-light" ? "text-ink/50" : "text-mist/55";
+  const hoverBg =
+    tone === "on-light" ? "hover:bg-ink/10" : "hover:bg-citrus/15";
   const [active, setActive] = useState<{
     word: string;
     en: string;
@@ -299,7 +311,7 @@ export function HoverSaveWords({
             key={`${i}-${t.value}`}
             type="button"
             tabIndex={-1}
-            className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition hover:bg-citrus/15 focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
+            className={`inline-flex flex-col items-center rounded-sm px-0.5 align-baseline transition ${hoverBg} focus:outline-none focus-visible:ring-1 focus-visible:ring-citrus/50 ${
               glossEnabled || pronunciationEnabled
                 ? "mx-0.5 py-0.5"
                 : "border-b border-dotted border-transparent hover:border-citrus/70"
@@ -315,12 +327,16 @@ export function HoverSaveWords({
           >
             <span className="leading-tight">{t.value}</span>
             {glossEnabled && (
-              <span className="mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] font-normal leading-tight text-mist/80">
+              <span
+                className={`mt-0.5 max-w-[7.5rem] truncate text-center text-[10px] font-normal leading-tight ${glossClass}`}
+              >
                 {infoOf(t.value).en || (loading ? "…" : "·")}
               </span>
             )}
             {pronunciationEnabled && infoOf(t.value).ipa ? (
-              <span className="max-w-[8rem] truncate text-center text-[9px] font-normal italic leading-tight text-mist/55">
+              <span
+                className={`max-w-[8rem] truncate text-center text-[9px] font-normal italic leading-tight ${sayClass}`}
+              >
                 {infoOf(t.value).ipa}
               </span>
             ) : null}
