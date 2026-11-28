@@ -15,10 +15,10 @@ export function SiteNav() {
   const pathname = usePathname();
 
   return (
-    <header className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-3 sm:gap-3 sm:px-8 sm:py-6">
-      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+    <header className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-x-2 gap-y-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-5 lg:px-8 lg:py-6">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <Link href="/" className="group flex items-baseline gap-2">
-          <span className="brand-display text-2xl font-extrabold tracking-tight text-paper sm:text-4xl">
+          <span className="brand-display text-[1.35rem] font-extrabold tracking-tight text-paper sm:text-3xl lg:text-4xl">
             Plume
           </span>
           <span className="hidden text-sm font-medium uppercase tracking-[0.2em] text-mist/70 sm:inline">
@@ -27,15 +27,15 @@ export function SiteNav() {
         </Link>
         <LevelBadge />
       </div>
-      <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
-        <nav className="flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full border border-[var(--line)] bg-ink-2/50 p-1 backdrop-blur-md sm:gap-1 sm:p-1.5">
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:flex-none sm:gap-3">
+        <nav className="flex min-w-0 items-center gap-0.5 rounded-full border border-[var(--line)] bg-ink-2/50 p-0.5 backdrop-blur-md sm:gap-1 sm:p-1.5">
           {links.map((l) => {
             const active = pathname === l.href;
             return (
               <Link
                 key={l.href}
                 href={l.href}
-                className={`min-h-10 shrink-0 rounded-full px-3 py-2 text-sm font-medium transition sm:px-5 sm:text-base ${
+                className={`min-h-9 shrink-0 rounded-full px-2.5 py-1.5 text-xs font-medium transition sm:min-h-10 sm:px-4 sm:py-2 sm:text-sm lg:px-5 lg:text-base ${
                   active
                     ? "bg-citrus text-ink"
                     : "text-mist hover:text-paper"
