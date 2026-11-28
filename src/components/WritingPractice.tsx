@@ -10,8 +10,7 @@ import {
   readPronunciationEnabled,
   writePronunciationEnabled,
 } from "@/components/HoverSaveWords";
-import { GlossToggle } from "@/components/GlossToggle";
-import { PronunciationToggle } from "@/components/PronunciationToggle";
+import { GlossToolbar } from "@/components/GlossToolbar";
 
 type Issue = {
   type: string;
@@ -292,8 +291,8 @@ export function WritingPractice() {
         </h1>
         <p className="mt-4 max-w-lg text-lg leading-relaxed text-mist sm:text-xl">
           Type mixed French and English however it comes out. Sessions save for{" "}
-          <span className="text-paper">{ownerLabel}</span>. Use the EN /
-          Pronunciation toggles on the result; hover words to send them to Anki.
+          <span className="text-paper">{ownerLabel}</span>. Turn on English and
+          say-it tips below; hover a word to save to Anki.
         </p>
       </div>
 
@@ -335,6 +334,19 @@ export function WritingPractice() {
 
         <div>
           <div className="panel-interactive animate-rise-delay rounded-2xl p-4 shadow-glow sm:p-6">
+            <GlossToolbar
+              className="mb-4 border-b border-[var(--line)] pb-3"
+              glossOn={glossOn}
+              pronOn={pronOn}
+              onGlossChange={(on) => {
+                setGlossOn(on);
+                writeGlossEnabled(on);
+              }}
+              onPronChange={(on) => {
+                setPronOn(on);
+                writePronunciationEnabled(on);
+              }}
+            />
             <label htmlFor="french-input" className="sr-only">
               Mixed French or English practice text
             </label>
@@ -412,25 +424,9 @@ export function WritingPractice() {
               )}
 
               <div className="panel-interactive rounded-2xl p-5 sm:p-6">
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-mist">
-                    French
-                  </p>
-                  <GlossToggle
-                    enabled={glossOn}
-                    onChange={(on) => {
-                      setGlossOn(on);
-                      writeGlossEnabled(on);
-                    }}
-                  />
-                  <PronunciationToggle
-                    enabled={pronOn}
-                    onChange={(on) => {
-                      setPronOn(on);
-                      writePronunciationEnabled(on);
-                    }}
-                  />
-                </div>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-mist">
+                  French
+                </p>
                 <p className="brand-display mt-2 text-3xl font-bold text-citrus sm:text-4xl">
                   <HoverSaveWords
                     text={result.corrected}
@@ -480,7 +476,15 @@ export function WritingPractice() {
                           <span className="text-sm text-mist">
                             <span className="text-ember/90">{issue.original}</span>
                             <span className="mx-2 text-mist/40">→</span>
-                            <span className="text-paper">{issue.suggestion}</span>
+                            <span className="text-paper">
+                              <HoverSaveWords
+                                text={issue.suggestion}
+                                glossEnabled={glossOn}
+                                pronunciationEnabled={pronOn}
+                                onSaved={(_w, msg) => setAnkiMsg(msg)}
+                                onError={(msg) => setAnkiMsg(msg)}
+                              />
+                            </span>
                           </span>
                         )}
                       </div>
